@@ -147,22 +147,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             
             // Create booking
-            $bookingId = createHallBooking(
-                $hallId,
-                $customerId,
-                $eventName,
-                $eventType,
-                $startDate,
-                $startTime,
-                $endDate,
-                $endTime,
-                $attendeeCount,
-                [], // Additional items
-                $paymentType,
-                $specialRequirements,
-                'Online',
-                null // Created by (null for online bookings)
-            );
+            $bookingData = [
+                'hall_id' => $hallId,
+                'customer_id' => $customerId,
+                'event_name' => $eventName,
+                'event_type' => $eventType,
+                'start_date' => $startDate,
+                'start_time' => $startTime,
+                'end_date' => $endDate,
+                'end_time' => $endTime,
+                'attendee_count' => $attendeeCount,
+                'hall_rental' => calculateHallRental($hallId, $startDate, $startTime, $endDate, $endTime),
+                'service_fee' => 0,
+                'tax_rate' => $taxRate,
+                'payment_type' => $paymentType,
+                'special_requirements' => $specialRequirements,
+                'booking_source' => 'Online',
+                'created_by' => null,
+                'duration_hours' => 0 // Will be calculated
+            ];
+            
+            $bookingId = createHallBooking($bookingData);
             
             if ($bookingId) {
                 $success = true;

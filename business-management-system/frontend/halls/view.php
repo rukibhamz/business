@@ -42,7 +42,9 @@ if (!$hall) {
 }
 
 // Get hall statistics
-$stats = getHallStatistics($hallId);
+$startDate = date('Y-01-01'); // Current year start
+$endDate = date('Y-12-31'); // Current year end
+$stats = getHallStatistics($hallId, $startDate, $endDate);
 
 // Get recent bookings for this hall
 $stmt = $conn->prepare("

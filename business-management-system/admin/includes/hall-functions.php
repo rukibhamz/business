@@ -358,7 +358,7 @@ function updateBookingStatus($bookingId, $newStatus, $userId = null) {
     
     // Log activity
     if ($userId) {
-        logActivity("Booking status updated to {$newStatus}", $bookingId, 'hall_booking', $userId);
+        logActivity("Booking status updated to {$newStatus}", $bookingId, 'hall_booking');
     }
     
     return true;
