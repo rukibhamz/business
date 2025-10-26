@@ -503,3 +503,115 @@ function requirePermission($permission) {
 function logActivity($action, $description = '', $data = []) {
     return logActivity($action, $description, $data);
 }
+
+/**
+ * Check if current user has specific permission
+ * @param string $permission Permission name (e.g., 'users.create')
+ * @return bool
+ */
+function hasPermission($permission) {
+    if (!isset($_SESSION['user_id'])) {
+        return false;
+    }
+    
+    // Super Admin has all permissions
+    if ($_SESSION['role_id'] == 1) {
+        return true;
+    }
+    
+    // Check if permission exists for user's role
+    global $conn;
+    $stmt = $conn->prepare("
+        SELECT COUNT(*) as count 
+        FROM " . DB_PREFIX . "role_permissions rp 
+        JOIN " . DB_PREFIX . "permissions p ON rp.permission_id = p.id 
+        WHERE rp.role_id = ? AND p.name = ?
+    ");
+    $stmt->bind_param('is', $_SESSION['role_id'], $permission);
+    $stmt->execute();
+    $result = $stmt->get_result()->fetch_assoc();
+    
+    return $result['count'] > 0;
+}
+
+/**
+ * Check if user has any of multiple permissions
+ * @param array $permissions Array of permission names
+ * @return bool
+ */
+function hasAnyPermission($permissions) {
+    foreach ($permissions as $permission) {
+        if (hasPermission($permission)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Check if user has all of multiple permissions
+ * @param array $permissions Array of permission names
+ * @return bool
+ */
+function hasAllPermissions($permissions) {
+    foreach ($permissions as $permission) {
+        if (!hasPermission($permission)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * Get user's full name
+ * @param int $userId User ID
+ * @return string Full name
+ */
+function getUserName($userId) {
+    global $conn;
+    $stmt = $conn->prepare("
+        SELECT CONCAT(first_name, ' ', last_name) as full_name 
+        FROM " . DB_PREFIX . "users 
+        WHERE id = ?
+    ");
+    $stmt->bind_param('i', $userId);
+    $stmt->execute();
+    $result = $stmt->get_result()->fetch_assoc();
+    return $result['full_name'] ?? 'Unknown User';
+}
+
+/**
+ * Get setting value from database
+ * @param string $key Setting key
+ * @param string $default Default value if not found
+ * @return string Setting value
+ */
+function getSetting($key, $default = '') {
+    global $conn;
+    $stmt = $conn->prepare("
+        SELECT setting_value 
+        FROM " . DB_PREFIX . "settings 
+        WHERE setting_key = ?
+    ");
+    $stmt->bind_param('s', $key);
+    $stmt->execute();
+    $result = $stmt->get_result()->fetch_assoc();
+    return $result['setting_value'] ?? $default;
+}
+
+/**
+ * Update setting value
+ * @param string $key Setting key
+ * @param string $value Setting value
+ * @return bool Success status
+ */
+function updateSetting($key, $value) {
+    global $conn;
+    $stmt = $conn->prepare("
+        UPDATE " . DB_PREFIX . "settings 
+        SET setting_value = ?, updated_at = NOW() 
+        WHERE setting_key = ?
+    ");
+    $stmt->bind_param('ss', $value, $key);
+    return $stmt->execute();
+}
