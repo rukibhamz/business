@@ -66,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->bind_param('ssi', $name, $description, $isActive);
         
         if ($stmt->execute()) {
-            $roleId = $conn->insert_id;
+            $roleId = $conn->getConnection()->lastInsertId();
             
             // Copy permissions if specified
             if ($copyFromRoleId > 0) {

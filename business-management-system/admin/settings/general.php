@@ -78,7 +78,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         $success = true;
         foreach ($settings as $key => $value) {
-            if (!updateSetting($key, $value)) {
+            if (!updateSetting($key, (string)$value)) {
                 $success = false;
                 $errors[] = "Failed to update {$key}";
                 break;

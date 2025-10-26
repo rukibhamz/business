@@ -241,22 +241,38 @@ include 'includes/header.php';
             </div>
             <div class="card-content">
                 <div class="quick-actions">
-                    <button class="quick-action-btn" onclick="showUserManagement()">
+                    <?php if (hasPermission('users.view')): ?>
+                    <a href="users/index.php" class="quick-action-btn">
                         <i class="icon-users"></i>
                         <span>Manage Users</span>
-                    </button>
-                    <button class="quick-action-btn" onclick="showSettings()">
+                    </a>
+                    <?php endif; ?>
+                    
+                    <?php if (hasPermission('roles.view')): ?>
+                    <a href="roles/index.php" class="quick-action-btn">
+                        <i class="icon-shield"></i>
+                        <span>Manage Roles</span>
+                    </a>
+                    <?php endif; ?>
+                    
+                    <?php if (hasPermission('settings.view')): ?>
+                    <a href="settings/index.php" class="quick-action-btn">
                         <i class="icon-settings"></i>
                         <span>System Settings</span>
-                    </button>
-                    <button class="quick-action-btn" onclick="showReports()">
-                        <i class="icon-chart"></i>
-                        <span>View Reports</span>
-                    </button>
-                    <button class="quick-action-btn" onclick="showHelp()">
-                        <i class="icon-help"></i>
-                        <span>Get Help</span>
-                    </button>
+                    </a>
+                    <?php endif; ?>
+                    
+                    <?php if (hasPermission('activity.view')): ?>
+                    <a href="activity/index.php" class="quick-action-btn">
+                        <i class="icon-activity"></i>
+                        <span>Activity Logs</span>
+                    </a>
+                    <?php endif; ?>
+                    
+                    <a href="users/profile.php" class="quick-action-btn">
+                        <i class="icon-user"></i>
+                        <span>My Profile</span>
+                    </a>
                 </div>
             </div>
         </div>

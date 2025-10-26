@@ -112,21 +112,18 @@ $menuItems = [
         'children' => [
             [
                 'title' => 'All Users',
-                'url' => '#',
-                'permission' => 'users.view',
-                'disabled' => true
+                'url' => 'users/index.php',
+                'permission' => 'users.view'
             ],
             [
                 'title' => 'Roles & Permissions',
-                'url' => '#',
-                'permission' => 'users.roles.view',
-                'disabled' => true
+                'url' => 'roles/index.php',
+                'permission' => 'roles.view'
             ],
             [
                 'title' => 'Activity Logs',
-                'url' => '#',
-                'permission' => 'logs.view',
-                'disabled' => true
+                'url' => 'activity/index.php',
+                'permission' => 'activity.view'
             ]
         ]
     ],
@@ -136,8 +133,23 @@ $menuItems = [
         'icon' => 'icon-settings',
         'url' => '#',
         'permission' => 'settings.view',
-        'disabled' => true,
-        'badge' => 'Coming Soon'
+        'children' => [
+            [
+                'title' => 'General Settings',
+                'url' => 'settings/general.php',
+                'permission' => 'settings.edit'
+            ],
+            [
+                'title' => 'Email Settings',
+                'url' => 'settings/email.php',
+                'permission' => 'settings.edit'
+            ],
+            [
+                'title' => 'System Settings',
+                'url' => 'settings/system.php',
+                'permission' => 'settings.edit'
+            ]
+        ]
     ]
 ];
 
