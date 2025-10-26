@@ -303,3 +303,4 @@ function insertVariable(variable) {
 </style>
 
 <?php include '../../includes/footer.php'; ?>
+

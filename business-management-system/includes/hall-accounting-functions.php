@@ -419,3 +419,4 @@ function generatePaymentNumber($conn) {
     
     return 'PAY' . date('Y') . str_pad($count + 1, 4, '0', STR_PAD_LEFT);
 }
+
