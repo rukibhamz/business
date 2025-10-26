@@ -207,17 +207,17 @@ function handleAdminCreation() {
     }
     
     $adminData = [
-        'username' => sanitizeInput($_POST['username'] ?? ''),
-        'email' => sanitizeInput($_POST['email'] ?? ''),
+        'username' => is_string($_POST['username'] ?? '') ? sanitizeInput($_POST['username']) : '',
+        'email' => is_string($_POST['email'] ?? '') ? sanitizeInput($_POST['email']) : '',
         'password' => $_POST['password'] ?? '',
-        'first_name' => sanitizeInput($_POST['first_name'] ?? ''),
-        'last_name' => sanitizeInput($_POST['last_name'] ?? ''),
-        'phone' => sanitizeInput($_POST['phone'] ?? '')
+        'first_name' => is_string($_POST['first_name'] ?? '') ? sanitizeInput($_POST['first_name']) : '',
+        'last_name' => is_string($_POST['last_name'] ?? '') ? sanitizeInput($_POST['last_name']) : '',
+        'phone' => is_string($_POST['phone'] ?? '') ? sanitizeInput($_POST['phone']) : ''
     ];
     
     // Validate admin data
     $errors = [];
-    if (empty($adminData['username']) || strlen($adminData['username']) < 4) {
+    if (empty($adminData['username']) || !is_string($adminData['username']) || strlen($adminData['username']) < 4) {
         $errors[] = 'Username must be at least 4 characters';
     }
     if (empty($adminData['email']) || !isValidEmail($adminData['email'])) {
