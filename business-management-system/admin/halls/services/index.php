@@ -288,3 +288,4 @@ function deleteService(serviceId) {
 </style>
 
 <?php include '../../includes/footer.php'; ?>
+

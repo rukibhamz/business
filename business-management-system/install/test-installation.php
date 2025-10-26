@@ -91,3 +91,4 @@ try {
     echo "3. User '$username' has proper permissions\n";
     echo "4. SQL file exists and is readable\n";
 }
+

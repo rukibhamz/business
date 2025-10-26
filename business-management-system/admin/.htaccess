@@ -27,3 +27,4 @@ RewriteCond %{REQUEST_FILENAME} !-d
 RewriteCond %{REQUEST_URI} !^/admin/login\.php$
 RewriteCond %{REQUEST_URI} !^/admin/logout\.php$
 RewriteRule ^(.*)$ login.php [R=302,L]
+

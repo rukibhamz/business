@@ -41,3 +41,4 @@ if ($result['success']) {
 } else {
     echo "✗ Database connection failed: " . $result['message'] . "\n";
 }
+

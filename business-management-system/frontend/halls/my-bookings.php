@@ -403,3 +403,4 @@ $companyPhone = getSetting('company_phone', '+234 000 000 0000');
     margin-right: 0;
 }
 </style>
+
