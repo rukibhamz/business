@@ -226,7 +226,11 @@ function testDatabaseConnection($host, $port, $username, $password, $database) {
 function installDatabaseSchema($pdo, $prefix = 'bms_') {
     try {
         // Read and execute SQL file
-        $sql = file_get_contents('database.sql');
+        $sqlFile = __DIR__ . '/database.sql';
+        if (!file_exists($sqlFile)) {
+            throw new Exception('Database SQL file not found: ' . $sqlFile);
+        }
+        $sql = file_get_contents($sqlFile);
         
         // Replace table prefix if different
         if ($prefix !== 'bms_') {
@@ -236,20 +240,85 @@ function installDatabaseSchema($pdo, $prefix = 'bms_') {
         // Split SQL into individual statements
         $statements = array_filter(array_map('trim', explode(';', $sql)));
         
+        $executedStatements = 0;
         foreach ($statements as $statement) {
             if (!empty($statement) && !preg_match('/^(--|\/\*)/', $statement)) {
-                $pdo->exec($statement);
+                try {
+                    $pdo->exec($statement);
+                    $executedStatements++;
+                } catch (PDOException $e) {
+                    // Log the specific statement that failed
+                    error_log("Failed to execute SQL statement: " . $statement);
+                    error_log("Error: " . $e->getMessage());
+                    throw $e;
+                }
             }
         }
         
         return [
             'success' => true,
-            'message' => 'Database schema installed successfully!'
+            'message' => "Database schema installed successfully! ({$executedStatements} statements executed)"
         ];
-    } catch (PDOException $e) {
+    } catch (Exception $e) {
         return [
             'success' => false,
             'message' => 'Database installation failed: ' . $e->getMessage()
+        ];
+    }
+}
+
+/**
+ * Verify database tables were created successfully
+ */
+function verifyDatabaseTables($pdo, $prefix = 'bms_') {
+    try {
+        $requiredTables = [
+            $prefix . 'users',
+            $prefix . 'roles', 
+            $prefix . 'permissions',
+            $prefix . 'role_permissions',
+            $prefix . 'settings',
+            $prefix . 'activity_logs'
+        ];
+        
+        $existingTables = [];
+        $stmt = $pdo->query("SHOW TABLES");
+        while ($row = $stmt->fetch(PDO::FETCH_NUM)) {
+            $existingTables[] = $row[0];
+        }
+        
+        $missingTables = array_diff($requiredTables, $existingTables);
+        
+        if (!empty($missingTables)) {
+            return [
+                'success' => false,
+                'message' => 'Missing tables: ' . implode(', ', $missingTables),
+                'missing_tables' => $missingTables
+            ];
+        }
+        
+        // Check if roles table has data
+        $stmt = $pdo->query("SELECT COUNT(*) FROM {$prefix}roles");
+        $roleCount = $stmt->fetchColumn();
+        
+        if ($roleCount == 0) {
+            return [
+                'success' => false,
+                'message' => 'Roles table is empty - default data not inserted'
+            ];
+        }
+        
+        return [
+            'success' => true,
+            'message' => 'All required tables created successfully',
+            'tables_created' => count($existingTables),
+            'roles_count' => $roleCount
+        ];
+        
+    } catch (PDOException $e) {
+        return [
+            'success' => false,
+            'message' => 'Database verification failed: ' . $e->getMessage()
         ];
     }
 }
@@ -300,65 +369,37 @@ function createConfigFile($config) {
     $configContent .= "    ini_set('display_errors', 0);\n";
     $configContent .= "}\n";
     
-    return file_put_contents('../config/config.php', $configContent) !== false;
+    return file_put_contents('../config/config.php', $configContent);
 }
 
 /**
  * Create admin user
  */
-function createAdminUser($pdo, $userData, $prefix = 'bms_') {
+function createAdminUser($pdo, $adminData, $prefix = 'bms_') {
     try {
         // Hash password
-        $hashedPassword = password_hash($userData['password'], PASSWORD_DEFAULT);
+        $hashedPassword = password_hash($adminData['password'], PASSWORD_DEFAULT);
         
         // Insert admin user
         $stmt = $pdo->prepare("
             INSERT INTO {$prefix}users 
-            (first_name, last_name, email, username, password, role_id, is_active, created_at) 
-            VALUES (?, ?, ?, ?, ?, 1, 1, NOW())
+            (username, email, password, first_name, last_name, phone, role_id, status, created_at) 
+            VALUES (?, ?, ?, ?, ?, ?, 1, 'active', NOW())
         ");
         
         $stmt->execute([
-            $userData['first_name'],
-            $userData['last_name'],
-            $userData['email'],
-            $userData['username'],
-            $hashedPassword
-        ]);
-        
-        $userId = $pdo->lastInsertId();
-        
-        // Insert welcome notification
-        $stmt = $pdo->prepare("
-            INSERT INTO {$prefix}notifications 
-            (user_id, title, message, type, created_at) 
-            VALUES (?, ?, ?, 'success', NOW())
-        ");
-        
-        $stmt->execute([
-            $userId,
-            'Welcome to Business Management System!',
-            'Your installation has been completed successfully. You can now start using the system.'
-        ]);
-        
-        // Log installation activity
-        $stmt = $pdo->prepare("
-            INSERT INTO {$prefix}activity_logs 
-            (user_id, action, description, ip_address, user_agent, created_at) 
-            VALUES (?, 'system.install', ?, ?, ?, NOW())
-        ");
-        
-        $stmt->execute([
-            $userId,
-            'System installation completed successfully',
-            $_SERVER['REMOTE_ADDR'] ?? 'Unknown',
-            $_SERVER['HTTP_USER_AGENT'] ?? 'Unknown'
+            $adminData['username'],
+            $adminData['email'],
+            $hashedPassword,
+            $adminData['first_name'],
+            $adminData['last_name'],
+            $adminData['phone'] ?? null
         ]);
         
         return [
             'success' => true,
             'message' => 'Admin user created successfully!',
-            'user_id' => $userId
+            'user_id' => $pdo->lastInsertId()
         ];
     } catch (PDOException $e) {
         return [
@@ -369,217 +410,80 @@ function createAdminUser($pdo, $userData, $prefix = 'bms_') {
 }
 
 /**
- * Update site settings
+ * Create installation lock file
  */
-function updateSiteSettings($pdo, $settings, $prefix = 'bms_') {
-    try {
-        foreach ($settings as $key => $value) {
-            $stmt = $pdo->prepare("
-                INSERT INTO {$prefix}settings (setting_key, setting_value, setting_type, category, created_at) 
-                VALUES (?, ?, 'text', 'general', NOW())
-                ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_at = NOW()
-            ");
-            
-            $stmt->execute([$key, $value]);
-        }
-        
-        return [
-            'success' => true,
-            'message' => 'Site settings updated successfully!'
-        ];
-    } catch (PDOException $e) {
-        return [
-            'success' => false,
-            'message' => 'Failed to update site settings: ' . $e->getMessage()
-        ];
-    }
-}
-
-/**
- * Create installed lock file
- */
-function createInstalledLock() {
-    $lockContent = "Business Management System - Installation Lock File\n";
-    $lockContent .= "Created: " . date('Y-m-d H:i:s') . "\n";
+function createInstallationLock() {
+    $lockContent = "Business Management System Installation Lock\n";
+    $lockContent .= "Installed on: " . date('Y-m-d H:i:s') . "\n";
     $lockContent .= "Version: 1.0.0\n";
     $lockContent .= "DO NOT DELETE THIS FILE\n";
     
-    return file_put_contents('../installed.lock', $lockContent) !== false;
+    return file_put_contents('../installed.lock', $lockContent);
 }
 
 /**
- * Validate email address
+ * Log installation activity
+ */
+function logInstallationActivity($action, $message, $data = []) {
+    $logFile = '../logs/installation.log';
+    $timestamp = date('Y-m-d H:i:s');
+    $logEntry = "[{$timestamp}] {$action}: {$message}";
+    
+    if (!empty($data)) {
+        $logEntry .= " | Data: " . json_encode($data);
+    }
+    
+    $logEntry .= "\n";
+    
+    file_put_contents($logFile, $logEntry, FILE_APPEND | LOCK_EX);
+}
+
+/**
+ * Sanitize input
+ */
+function sanitizeInput($input) {
+    return htmlspecialchars(trim($input), ENT_QUOTES, 'UTF-8');
+}
+
+/**
+ * Validate email
  */
 function isValidEmail($email) {
     return filter_var($email, FILTER_VALIDATE_EMAIL) !== false;
 }
 
 /**
- * Validate password strength
+ * Get timezone list
  */
-function validatePasswordStrength($password) {
-    $strength = 0;
-    $messages = [];
-    
-    if (strlen($password) >= 8) {
-        $strength++;
-    } else {
-        $messages[] = 'At least 8 characters';
-    }
-    
-    if (preg_match('/[a-z]/', $password)) {
-        $strength++;
-    } else {
-        $messages[] = 'At least one lowercase letter';
-    }
-    
-    if (preg_match('/[A-Z]/', $password)) {
-        $strength++;
-    } else {
-        $messages[] = 'At least one uppercase letter';
-    }
-    
-    if (preg_match('/[0-9]/', $password)) {
-        $strength++;
-    } else {
-        $messages[] = 'At least one number';
-    }
-    
-    if (preg_match('/[^a-zA-Z0-9]/', $password)) {
-        $strength++;
-    } else {
-        $messages[] = 'At least one special character';
-    }
-    
-    $levels = ['Very Weak', 'Weak', 'Fair', 'Good', 'Strong', 'Very Strong'];
-    $level = $levels[min($strength, 5)];
-    
+function getTimezoneList() {
     return [
-        'strength' => $strength,
-        'level' => $level,
-        'messages' => $messages,
-        'is_valid' => $strength >= 3
+        'Africa/Lagos' => 'Lagos (GMT+1)',
+        'Africa/Cairo' => 'Cairo (GMT+2)',
+        'Africa/Johannesburg' => 'Johannesburg (GMT+2)',
+        'Europe/London' => 'London (GMT+0)',
+        'Europe/Paris' => 'Paris (GMT+1)',
+        'America/New_York' => 'New York (GMT-5)',
+        'America/Los_Angeles' => 'Los Angeles (GMT-8)',
+        'Asia/Tokyo' => 'Tokyo (GMT+9)',
+        'Asia/Shanghai' => 'Shanghai (GMT+8)',
+        'UTC' => 'UTC (GMT+0)'
     ];
 }
 
 /**
- * Sanitize input data
+ * Get currency list
  */
-function sanitizeInput($data) {
-    if (is_array($data)) {
-        return array_map('sanitizeInput', $data);
-    }
-    
-    return htmlspecialchars(trim($data), ENT_QUOTES, 'UTF-8');
-}
-
-/**
- * Generate CSRF token
- */
-function generateCSRFToken() {
-    if (!isset($_SESSION['csrf_token'])) {
-        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-    }
-    return $_SESSION['csrf_token'];
-}
-
-/**
- * Verify CSRF token
- */
-function verifyCSRFToken($token) {
-    return isset($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $token);
-}
-
-/**
- * Get available timezones
- */
-function getTimezones() {
-    $timezones = timezone_identifiers_list();
-    $grouped = [];
-    
-    foreach ($timezones as $timezone) {
-        $parts = explode('/', $timezone);
-        if (count($parts) > 1) {
-            $region = $parts[0];
-            $city = implode('/', array_slice($parts, 1));
-            $grouped[$region][] = $city;
-        }
-    }
-    
-    return $grouped;
-}
-
-/**
- * Get available currencies
- */
-function getCurrencies() {
+function getCurrencyList() {
     return [
+        'NGN' => 'Nigerian Naira (₦)',
         'USD' => 'US Dollar ($)',
         'EUR' => 'Euro (€)',
         'GBP' => 'British Pound (£)',
-        'NGN' => 'Nigerian Naira (₦)',
         'CAD' => 'Canadian Dollar (C$)',
         'AUD' => 'Australian Dollar (A$)',
         'JPY' => 'Japanese Yen (¥)',
         'CHF' => 'Swiss Franc (CHF)',
         'CNY' => 'Chinese Yuan (¥)',
-        'INR' => 'Indian Rupee (₹)',
-        'BRL' => 'Brazilian Real (R$)',
-        'MXN' => 'Mexican Peso ($)',
-        'ZAR' => 'South African Rand (R)',
-        'AED' => 'UAE Dirham (د.إ)',
-        'SAR' => 'Saudi Riyal (ر.س)'
+        'INR' => 'Indian Rupee (₹)'
     ];
-}
-
-/**
- * Get available date formats
- */
-function getDateFormats() {
-    return [
-        'Y-m-d' => 'YYYY-MM-DD (2024-01-15)',
-        'd/m/Y' => 'DD/MM/YYYY (15/01/2024)',
-        'm/d/Y' => 'MM/DD/YYYY (01/15/2024)',
-        'd-m-Y' => 'DD-MM-YYYY (15-01-2024)',
-        'Y/m/d' => 'YYYY/MM/DD (2024/01/15)'
-    ];
-}
-
-/**
- * Log installation activity
- */
-function logInstallationActivity($action, $description, $data = []) {
-    $logFile = '../logs/installation.log';
-    $timestamp = date('Y-m-d H:i:s');
-    $ip = $_SERVER['REMOTE_ADDR'] ?? 'Unknown';
-    $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? 'Unknown';
-    
-    $logEntry = "[{$timestamp}] [{$ip}] [{$action}] {$description}";
-    if (!empty($data)) {
-        $logEntry .= " | Data: " . json_encode($data);
-    }
-    $logEntry .= " | User-Agent: {$userAgent}\n";
-    
-    file_put_contents($logFile, $logEntry, FILE_APPEND | LOCK_EX);
-}
-
-/**
- * Clean up installation files (optional)
- */
-function cleanupInstallationFiles() {
-    $filesToRemove = [
-        'install-functions.php',
-        'database.sql'
-    ];
-    
-    foreach ($filesToRemove as $file) {
-        if (file_exists($file)) {
-            unlink($file);
-        }
-    }
-    
-    // Remove install directory
-    if (is_dir('.') && count(scandir('.')) <= 2) {
-        rmdir('.');
-    }
 }
