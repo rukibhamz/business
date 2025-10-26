@@ -70,22 +70,38 @@ $menuItems = [
         ]
     ],
     [
-        'id' => 'events',
-        'title' => 'Events',
-        'icon' => 'icon-events',
-        'url' => '#',
-        'permission' => 'events.view',
-        'disabled' => true,
-        'badge' => 'Coming Soon'
-    ],
-    [
         'id' => 'properties',
         'title' => 'Properties',
         'icon' => 'icon-properties',
         'url' => '#',
-        'permission' => 'properties.view',
-        'disabled' => true,
-        'badge' => 'Coming Soon'
+        'permission' => 'halls.view',
+        'children' => [
+            [
+                'title' => 'Halls',
+                'url' => 'halls/index.php',
+                'permission' => 'halls.view'
+            ],
+            [
+                'title' => 'Hall Bookings',
+                'url' => 'halls/bookings/index.php',
+                'permission' => 'halls.bookings'
+            ],
+            [
+                'title' => 'Hall Categories',
+                'url' => 'halls/categories/index.php',
+                'permission' => 'halls.view'
+            ],
+            [
+                'title' => 'Hall Reports',
+                'url' => 'halls/reports/index.php',
+                'permission' => 'halls.reports'
+            ],
+            [
+                'title' => 'Hall Settings',
+                'url' => 'halls/settings/hall-settings.php',
+                'permission' => 'halls.settings'
+            ]
+        ]
     ],
     [
         'id' => 'inventory',
