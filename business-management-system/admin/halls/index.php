@@ -357,3 +357,4 @@ function deleteHall(hallId) {
 </style>
 
 <?php include '../../includes/footer.php'; ?>
+

@@ -719,3 +719,4 @@ addTicketType();
 </style>
 
 <?php include '../../../includes/footer.php'; ?>
+

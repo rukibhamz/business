@@ -398,3 +398,4 @@ $maxPrice = $priceRange['max_price'] ?? 10000;
     </script>
 </body>
 </html>
+

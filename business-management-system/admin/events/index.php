@@ -385,3 +385,4 @@ function deleteEvent(eventId) {
 </style>
 
 <?php include '../../includes/footer.php'; ?>
+

@@ -1,0 +1,20 @@
+# Prevent direct access to uploaded files
+# Allow access only through the application
+
+# Deny all direct access
+<Files "*">
+    Order Deny,Allow
+    Deny from all
+</Files>
+
+# Allow access to images only
+<FilesMatch "\.(jpg|jpeg|png|gif|webp)$">
+    Order Allow,Deny
+    Allow from all
+</FilesMatch>
+
+# Allow access to PDFs only
+<FilesMatch "\.(pdf)$">
+    Order Allow,Deny
+    Allow from all
+</FilesMatch>

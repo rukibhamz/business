@@ -576,3 +576,4 @@ document.getElementById('paymentForm').addEventListener('submit', function(e) {
 </style>
 
 <?php include '../../../includes/footer.php'; ?>
+

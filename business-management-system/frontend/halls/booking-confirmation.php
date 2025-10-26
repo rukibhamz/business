@@ -519,3 +519,4 @@ $companyPhone = getSetting('company_phone', '+234 000 000 0000');
     </script>
 </body>
 </html>
+
