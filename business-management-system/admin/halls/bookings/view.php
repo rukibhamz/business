@@ -34,7 +34,7 @@ if ($bookingId <= 0) {
 
 // Get booking details
 $stmt = $conn->prepare("
-    SELECT hb.*, h.hall_name, h.hall_code, h.location, h.capacity,
+    SELECT hb.*, h.hall_name, h.hall_code, h.location, h.address, h.capacity, h.currency,
            c.first_name, c.last_name, c.company_name, c.email as customer_email, c.phone as customer_phone,
            u.first_name as created_by_first, u.last_name as created_by_last
     FROM " . DB_PREFIX . "hall_bookings hb
@@ -74,42 +74,8 @@ $stmt->bind_param('i', $bookingId);
 $stmt->execute();
 $payments = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
 
-// Process actions
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (!verifyCSRFToken($_POST['csrf_token'])) {
-        $errors[] = 'Invalid security token. Please try again.';
-    } else {
-        $action = $_POST['action'] ?? '';
-        
-        switch ($action) {
-            case 'confirm':
-                if (updateBookingStatus($bookingId, 'Confirmed')) {
-                    header('Location: view.php?id=' . $bookingId . '&success=confirmed');
-                    exit;
-                }
-                break;
-                
-            case 'cancel':
-                $reason = trim($_POST['cancellation_reason'] ?? '');
-                if (empty($reason)) {
-                    $errors[] = 'Cancellation reason is required.';
-                } else {
-                    if (cancelBooking($bookingId, $reason)) {
-                        header('Location: view.php?id=' . $bookingId . '&success=cancelled');
-                        exit;
-                    }
-                }
-                break;
-                
-            case 'complete':
-                if (completeBooking($bookingId)) {
-                    header('Location: view.php?id=' . $bookingId . '&success=completed');
-                    exit;
-                }
-                break;
-        }
-    }
-}
+// Check for success message
+$success = isset($_GET['success']) && $_GET['success'] == '1';
 
 // Set page title
 $pageTitle = 'View Booking - ' . $booking['booking_number'];
@@ -120,62 +86,49 @@ include '../../includes/header.php';
 <div class="page-header">
     <div class="page-title">
         <h1>Booking Details</h1>
-        <p>Booking #<?php echo htmlspecialchars($booking['booking_number']); ?></p>
+        <p><?php echo htmlspecialchars($booking['booking_number']); ?> • <?php echo htmlspecialchars($booking['event_name']); ?></p>
     </div>
     <div class="page-actions">
         <?php if (hasPermission('halls.edit')): ?>
         <a href="edit.php?id=<?php echo $booking['id']; ?>" class="btn btn-primary">
             <i class="icon-edit"></i> Edit Booking
         </a>
-        <?php if ($booking['booking_status'] == 'Pending'): ?>
-        <form method="POST" style="display: inline;">
-            <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
-            <input type="hidden" name="action" value="confirm">
-            <button type="submit" class="btn btn-success">
-                <i class="icon-check"></i> Confirm Booking
-            </button>
-        </form>
         <?php endif; ?>
         
-        <?php if ($booking['booking_status'] == 'Confirmed'): ?>
-        <form method="POST" style="display: inline;">
-            <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
-            <input type="hidden" name="action" value="complete">
-            <button type="submit" class="btn btn-primary">
-                <i class="icon-check-circle"></i> Mark Complete
-            </button>
-        </form>
+        <?php if ($booking['booking_status'] == 'Pending'): ?>
+        <a href="confirm.php?id=<?php echo $booking['id']; ?>" class="btn btn-success">
+            <i class="icon-check"></i> Confirm Booking
+        </a>
+        <?php endif; ?>
+        
+        <?php if ($booking['balance_due'] > 0): ?>
+        <a href="record-payment.php?id=<?php echo $booking['id']; ?>" class="btn btn-info">
+            <i class="icon-credit-card"></i> Record Payment
+        </a>
         <?php endif; ?>
         
         <?php if ($booking['booking_status'] != 'Cancelled' && $booking['booking_status'] != 'Completed'): ?>
-        <button type="button" class="btn btn-warning" onclick="showCancelModal()">
-            <i class="icon-times"></i> Cancel Booking
-        </button>
+        <a href="cancel.php?id=<?php echo $booking['id']; ?>" class="btn btn-warning">
+            <i class="icon-x"></i> Cancel Booking
+        </a>
         <?php endif; ?>
+        
+        <a href="index.php" class="btn btn-secondary">
+            <i class="icon-arrow-left"></i> Back to Bookings
+        </a>
     </div>
 </div>
 
-<?php if (isset($_GET['success'])): ?>
+<?php if ($success): ?>
 <div class="alert alert-success">
-    <?php
-    switch ($_GET['success']) {
-        case 'confirmed':
-            echo 'Booking has been confirmed successfully.';
-            break;
-        case 'cancelled':
-            echo 'Booking has been cancelled successfully.';
-            break;
-        case 'completed':
-            echo 'Booking has been marked as completed.';
-            break;
-    }
-    ?>
+    <i class="icon-check"></i> Booking updated successfully!
 </div>
 <?php endif; ?>
 
 <div class="row">
     <!-- Booking Information -->
     <div class="col-md-8">
+        <!-- Basic Information -->
         <div class="card">
             <div class="card-header">
                 <h3>Booking Information</h3>
@@ -183,46 +136,74 @@ include '../../includes/header.php';
             <div class="card-body">
                 <div class="row">
                     <div class="col-md-6">
-                        <div class="info-group">
-                            <label>Booking Number:</label>
-                            <span><?php echo htmlspecialchars($booking['booking_number']); ?></span>
-                        </div>
-                        <div class="info-group">
-                            <label>Hall:</label>
-                            <span><?php echo htmlspecialchars($booking['hall_name'] . ' (' . $booking['hall_code'] . ')'); ?></span>
-                        </div>
-                        <div class="info-group">
-                            <label>Event Name:</label>
-                            <span><?php echo htmlspecialchars($booking['event_name'] ?: 'Not specified'); ?></span>
-                        </div>
-                        <div class="info-group">
-                            <label>Event Type:</label>
-                            <span><?php echo htmlspecialchars($booking['event_type'] ?: 'Not specified'); ?></span>
-                        </div>
+                        <table class="table table-borderless">
+                            <tr>
+                                <td><strong>Booking Number:</strong></td>
+                                <td><?php echo htmlspecialchars($booking['booking_number']); ?></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Event Name:</strong></td>
+                                <td><?php echo htmlspecialchars($booking['event_name']); ?></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Event Type:</strong></td>
+                                <td><?php echo htmlspecialchars($booking['event_type'] ?: 'Not specified'); ?></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Hall:</strong></td>
+                                <td>
+                                    <a href="../view.php?id=<?php echo $booking['hall_id']; ?>" class="text-decoration-none">
+                                        <?php echo htmlspecialchars($booking['hall_name']); ?>
+                                    </a>
+                                    <br><small class="text-muted"><?php echo htmlspecialchars($booking['hall_code']); ?></small>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Location:</strong></td>
+                                <td><?php echo htmlspecialchars($booking['location'] ?: 'Not specified'); ?></td>
+                            </tr>
+                        </table>
                     </div>
                     <div class="col-md-6">
-                        <div class="info-group">
-                            <label>Start Date & Time:</label>
-                            <span><?php echo date('M d, Y g:i A', strtotime($booking['start_date'] . ' ' . $booking['start_time'])); ?></span>
-                        </div>
-                        <div class="info-group">
-                            <label>End Date & Time:</label>
-                            <span><?php echo date('M d, Y g:i A', strtotime($booking['end_date'] . ' ' . $booking['end_time'])); ?></span>
-                        </div>
-                        <div class="info-group">
-                            <label>Duration:</label>
-                            <span><?php echo round($booking['duration_hours'], 1); ?> hours</span>
-                        </div>
-                        <div class="info-group">
-                            <label>Attendees:</label>
-                            <span><?php echo $booking['attendee_count'] ? number_format($booking['attendee_count']) : 'Not specified'; ?></span>
-                        </div>
+                        <table class="table table-borderless">
+                            <tr>
+                                <td><strong>Start Date:</strong></td>
+                                <td><?php echo date('M d, Y', strtotime($booking['start_date'])); ?></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Start Time:</strong></td>
+                                <td><?php echo date('g:i A', strtotime($booking['start_time'])); ?></td>
+                            </tr>
+                            <tr>
+                                <td><strong>End Date:</strong></td>
+                                <td><?php echo date('M d, Y', strtotime($booking['end_date'])); ?></td>
+                            </tr>
+                            <tr>
+                                <td><strong>End Time:</strong></td>
+                                <td><?php echo date('g:i A', strtotime($booking['end_time'])); ?></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Duration:</strong></td>
+                                <td><?php echo round($booking['duration_hours'], 1); ?> hours</td>
+                            </tr>
+                        </table>
                     </div>
                 </div>
-                
-                <?php if ($booking['special_requirements']): ?>
-                <div class="info-group">
-                    <label>Special Requirements:</label>
+
+                <?php if (!empty($booking['attendee_count'])): ?>
+                <div class="row">
+                    <div class="col-md-6">
+                        <p><strong>Expected Attendees:</strong> <?php echo number_format($booking['attendee_count']); ?></p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>Hall Capacity:</strong> <?php echo number_format($booking['capacity']); ?> people</p>
+                    </div>
+                </div>
+                <?php endif; ?>
+
+                <?php if (!empty($booking['special_requirements'])): ?>
+                <div class="mt-3">
+                    <h5>Special Requirements</h5>
                     <p><?php echo nl2br(htmlspecialchars($booking['special_requirements'])); ?></p>
                 </div>
                 <?php endif; ?>
@@ -230,39 +211,53 @@ include '../../includes/header.php';
         </div>
 
         <!-- Customer Information -->
+        <?php if ($booking['customer_id']): ?>
         <div class="card">
             <div class="card-header">
                 <h3>Customer Information</h3>
             </div>
             <div class="card-body">
-                <?php if ($booking['customer_id']): ?>
                 <div class="row">
                     <div class="col-md-6">
-                        <div class="info-group">
-                            <label>Name:</label>
-                            <span><?php echo htmlspecialchars($booking['first_name'] . ' ' . $booking['last_name']); ?></span>
-                        </div>
-                        <div class="info-group">
-                            <label>Company:</label>
-                            <span><?php echo htmlspecialchars($booking['company_name'] ?: 'Not specified'); ?></span>
-                        </div>
+                        <table class="table table-borderless">
+                            <tr>
+                                <td><strong>Name:</strong></td>
+                                <td><?php echo htmlspecialchars($booking['company_name'] ?: $booking['first_name'] . ' ' . $booking['last_name']); ?></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Email:</strong></td>
+                                <td>
+                                    <a href="mailto:<?php echo htmlspecialchars($booking['customer_email']); ?>">
+                                        <?php echo htmlspecialchars($booking['customer_email']); ?>
+                                    </a>
+                                </td>
+                            </tr>
+                        </table>
                     </div>
                     <div class="col-md-6">
-                        <div class="info-group">
-                            <label>Email:</label>
-                            <span><?php echo htmlspecialchars($booking['customer_email']); ?></span>
-                        </div>
-                        <div class="info-group">
-                            <label>Phone:</label>
-                            <span><?php echo htmlspecialchars($booking['customer_phone']); ?></span>
-                        </div>
+                        <table class="table table-borderless">
+                            <tr>
+                                <td><strong>Phone:</strong></td>
+                                <td>
+                                    <?php if ($booking['customer_phone']): ?>
+                                        <a href="tel:<?php echo htmlspecialchars($booking['customer_phone']); ?>">
+                                            <?php echo htmlspecialchars($booking['customer_phone']); ?>
+                                        </a>
+                                    <?php else: ?>
+                                        Not provided
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td><strong>Customer ID:</strong></td>
+                                <td><?php echo $booking['customer_id']; ?></td>
+                            </tr>
+                        </table>
                     </div>
                 </div>
-                <?php else: ?>
-                <p class="text-muted">No customer information available.</p>
-                <?php endif; ?>
             </div>
         </div>
+        <?php endif; ?>
 
         <!-- Booking Items -->
         <?php if (!empty($bookingItems)): ?>
@@ -288,8 +283,8 @@ include '../../includes/header.php';
                                 <td><?php echo htmlspecialchars($item['item_name']); ?></td>
                                 <td><?php echo htmlspecialchars($item['item_description'] ?: '-'); ?></td>
                                 <td><?php echo $item['quantity']; ?></td>
-                                <td><?php echo formatCurrency($item['unit_price']); ?></td>
-                                <td><?php echo formatCurrency($item['line_total']); ?></td>
+                                <td><?php echo formatCurrency($item['unit_price'], $booking['currency']); ?></td>
+                                <td><?php echo formatCurrency($item['line_total'], $booking['currency']); ?></td>
                             </tr>
                             <?php endforeach; ?>
                         </tbody>
@@ -300,64 +295,105 @@ include '../../includes/header.php';
         <?php endif; ?>
     </div>
 
-    <!-- Financial Summary -->
+    <!-- Status & Payment -->
     <div class="col-md-4">
+        <!-- Status -->
+        <div class="card">
+            <div class="card-header">
+                <h3>Status</h3>
+            </div>
+            <div class="card-body">
+                <div class="status-item">
+                    <label>Booking Status:</label>
+                    <span class="badge <?php echo getBookingStatusBadgeClass($booking['booking_status']); ?>">
+                        <?php echo $booking['booking_status']; ?>
+                    </span>
+                </div>
+                
+                <div class="status-item">
+                    <label>Payment Status:</label>
+                    <span class="badge <?php echo getPaymentStatusBadgeClass($booking['payment_status']); ?>">
+                        <?php echo $booking['payment_status']; ?>
+                    </span>
+                </div>
+                
+                <div class="status-item">
+                    <label>Payment Type:</label>
+                    <span><?php echo $booking['payment_type']; ?></span>
+                </div>
+                
+                <div class="status-item">
+                    <label>Booking Source:</label>
+                    <span><?php echo $booking['booking_source']; ?></span>
+                </div>
+                
+                <div class="status-item">
+                    <label>Created:</label>
+                    <span><?php echo date('M d, Y g:i A', strtotime($booking['created_at'])); ?></span>
+                </div>
+                
+                <?php if ($booking['created_by_first']): ?>
+                <div class="status-item">
+                    <label>Created By:</label>
+                    <span><?php echo htmlspecialchars($booking['created_by_first'] . ' ' . $booking['created_by_last']); ?></span>
+                </div>
+                <?php endif; ?>
+                
+                <?php if ($booking['cancelled_at']): ?>
+                <div class="status-item">
+                    <label>Cancelled:</label>
+                    <span><?php echo date('M d, Y g:i A', strtotime($booking['cancelled_at'])); ?></span>
+                </div>
+                <?php endif; ?>
+                
+                <?php if ($booking['cancellation_reason']): ?>
+                <div class="status-item">
+                    <label>Cancellation Reason:</label>
+                    <span><?php echo htmlspecialchars($booking['cancellation_reason']); ?></span>
+                </div>
+                <?php endif; ?>
+            </div>
+        </div>
+
+        <!-- Payment Summary -->
         <div class="card">
             <div class="card-header">
                 <h3>Payment Summary</h3>
             </div>
             <div class="card-body">
-                <div class="financial-summary">
-                    <div class="summary-row">
-                        <span>Subtotal:</span>
-                        <span><?php echo formatCurrency($booking['subtotal']); ?></span>
-                    </div>
-                    <div class="summary-row">
-                        <span>Service Fee:</span>
-                        <span><?php echo formatCurrency($booking['service_fee']); ?></span>
-                    </div>
-                    <div class="summary-row">
-                        <span>Tax:</span>
-                        <span><?php echo formatCurrency($booking['tax_amount']); ?></span>
-                    </div>
-                    <div class="summary-row total">
-                        <span>Total Amount:</span>
-                        <span><?php echo formatCurrency($booking['total_amount']); ?></span>
-                    </div>
-                    <div class="summary-row">
-                        <span>Amount Paid:</span>
-                        <span class="text-success"><?php echo formatCurrency($booking['amount_paid']); ?></span>
-                    </div>
-                    <div class="summary-row">
-                        <span>Balance Due:</span>
-                        <span class="<?php echo $booking['balance_due'] > 0 ? 'text-danger' : 'text-success'; ?>">
-                            <?php echo formatCurrency($booking['balance_due']); ?>
-                        </span>
-                    </div>
+                <div class="payment-item">
+                    <label>Subtotal:</label>
+                    <span><?php echo formatCurrency($booking['subtotal'], $booking['currency']); ?></span>
                 </div>
                 
-                <div class="status-badges mt-3">
-                    <div class="status-badge">
-                        <label>Booking Status:</label>
-                        <span class="badge <?php echo getHallBookingStatusBadgeClass($booking['booking_status']); ?>">
-                            <?php echo $booking['booking_status']; ?>
-                        </span>
-                    </div>
-                    <div class="status-badge">
-                        <label>Payment Status:</label>
-                        <span class="badge <?php echo getHallPaymentStatusBadgeClass($booking['payment_status']); ?>">
-                            <?php echo $booking['payment_status']; ?>
-                        </span>
-                    </div>
+                <div class="payment-item">
+                    <label>Service Fee:</label>
+                    <span><?php echo formatCurrency($booking['service_fee'], $booking['currency']); ?></span>
                 </div>
                 
-                <?php if ($booking['balance_due'] > 0): ?>
-                <div class="mt-3">
-                    <a href="record-payment.php?id=<?php echo $bookingId; ?>" class="btn btn-primary btn-block">
-                        <i class="icon-credit-card"></i> Record Payment
-                    </a>
+                <div class="payment-item">
+                    <label>Tax:</label>
+                    <span><?php echo formatCurrency($booking['tax_amount'], $booking['currency']); ?></span>
                 </div>
-                <?php endif; ?>
+                
+                <hr>
+                
+                <div class="payment-item total">
+                    <label>Total Amount:</label>
+                    <span><?php echo formatCurrency($booking['total_amount'], $booking['currency']); ?></span>
+                </div>
+                
+                <div class="payment-item">
+                    <label>Amount Paid:</label>
+                    <span class="text-success"><?php echo formatCurrency($booking['amount_paid'], $booking['currency']); ?></span>
+                </div>
+                
+                <div class="payment-item">
+                    <label>Balance Due:</label>
+                    <span class="<?php echo $booking['balance_due'] > 0 ? 'text-danger' : 'text-success'; ?>">
+                        <?php echo formatCurrency($booking['balance_due'], $booking['currency']); ?>
+                    </span>
+                </div>
             </div>
         </div>
 
@@ -371,8 +407,8 @@ include '../../includes/header.php';
                 <?php foreach ($payments as $payment): ?>
                 <div class="payment-history-item">
                     <div class="payment-header">
-                        <strong><?php echo formatCurrency($payment['amount']); ?></strong>
-                        <span class="badge <?php echo getHallPaymentStatusBadgeClass($payment['status']); ?>">
+                        <strong><?php echo formatCurrency($payment['amount'], $booking['currency']); ?></strong>
+                        <span class="badge <?php echo getPaymentStatusBadgeClass($payment['status']); ?>">
                             <?php echo $payment['status']; ?>
                         </span>
                     </div>
@@ -404,125 +440,60 @@ include '../../includes/header.php';
             </div>
         </div>
         <?php endif; ?>
-
-        <!-- Booking Details -->
-        <div class="card">
-            <div class="card-header">
-                <h3>Booking Details</h3>
-            </div>
-            <div class="card-body">
-                <div class="info-group">
-                    <label>Created:</label>
-                    <span><?php echo date('M d, Y g:i A', strtotime($booking['created_at'])); ?></span>
-                </div>
-                <div class="info-group">
-                    <label>Created By:</label>
-                    <span><?php echo htmlspecialchars($booking['created_by_first'] . ' ' . $booking['created_by_last']); ?></span>
-                </div>
-                <div class="info-group">
-                    <label>Booking Source:</label>
-                    <span><?php echo htmlspecialchars($booking['booking_source']); ?></span>
-                </div>
-                <?php if ($booking['cancelled_at']): ?>
-                <div class="info-group">
-                    <label>Cancelled:</label>
-                    <span><?php echo date('M d, Y g:i A', strtotime($booking['cancelled_at'])); ?></span>
-                </div>
-                <?php endif; ?>
-                <?php if ($booking['cancellation_reason']): ?>
-                <div class="info-group">
-                    <label>Cancellation Reason:</label>
-                    <p><?php echo htmlspecialchars($booking['cancellation_reason']); ?></p>
-                </div>
-                <?php endif; ?>
-            </div>
-        </div>
     </div>
 </div>
 
-<!-- Cancel Booking Modal -->
-<div class="modal fade" id="cancelModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Cancel Booking</h5>
-                <button type="button" class="close" data-dismiss="modal">
-                    <span>&times;</span>
-                </button>
-            </div>
-            <form method="POST">
-                <div class="modal-body">
-                    <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
-                    <input type="hidden" name="action" value="cancel">
-                    
-                    <div class="form-group">
-                        <label for="cancellation_reason">Cancellation Reason <span class="text-danger">*</span></label>
-                        <textarea id="cancellation_reason" name="cancellation_reason" class="form-control" rows="4" 
-                                  placeholder="Please provide a reason for cancelling this booking..." required></textarea>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-danger">Cancel Booking</button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<script>
-function showCancelModal() {
-    $('#cancelModal').modal('show');
+<?php
+// Helper functions for badge classes
+function getBookingStatusBadgeClass($status) {
+    switch ($status) {
+        case 'Confirmed':
+            return 'badge-success';
+        case 'Pending':
+            return 'badge-warning';
+        case 'Completed':
+            return 'badge-info';
+        case 'Cancelled':
+            return 'badge-danger';
+        default:
+            return 'badge-secondary';
+    }
 }
-</script>
+
+function getPaymentStatusBadgeClass($status) {
+    switch ($status) {
+        case 'Paid':
+            return 'badge-success';
+        case 'Partial':
+            return 'badge-warning';
+        case 'Pending':
+            return 'badge-secondary';
+        case 'Refunded':
+            return 'badge-info';
+        default:
+            return 'badge-secondary';
+    }
+}
+?>
 
 <style>
-.info-group {
-    margin-bottom: 15px;
-}
-
-.info-group label {
-    font-weight: 600;
-    color: #666;
-    display: block;
-    margin-bottom: 5px;
-}
-
-.financial-summary {
-    border-top: 1px solid #dee2e6;
-    padding-top: 15px;
-}
-
-.summary-row {
+.status-item, .payment-item {
     display: flex;
     justify-content: space-between;
     margin-bottom: 10px;
-    padding: 5px 0;
+    padding-bottom: 5px;
 }
 
-.summary-row.total {
-    border-top: 1px solid #dee2e6;
-    font-weight: 600;
+.status-item:not(:last-child), .payment-item:not(:last-child) {
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.payment-item.total {
+    font-weight: bold;
     font-size: 1.1em;
-    margin-top: 10px;
-    padding-top: 10px;
-}
-
-.status-badges {
     border-top: 1px solid #dee2e6;
-    padding-top: 15px;
-}
-
-.status-badge {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 10px;
-}
-
-.status-badge label {
-    font-weight: 500;
-    margin: 0;
+    padding-top: 10px;
+    margin-top: 10px;
 }
 
 .payment-history-item {
@@ -564,3 +535,4 @@ function showCancelModal() {
 </style>
 
 <?php include '../../includes/footer.php'; ?>
+
