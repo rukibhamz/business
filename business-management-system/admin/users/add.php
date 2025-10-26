@@ -120,7 +120,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->bind_param('sssssiiss', $firstName, $lastName, $email, $username, $hashedPassword, $roleId, $isActive, $phone, $profilePicture);
         
         if ($stmt->execute()) {
-            $userId = $conn->insert_id;
+            $userId = $conn->getConnection()->lastInsertId();
             
             // Log activity
             logActivity('users.create', "User created: {$firstName} {$lastName}", [

@@ -226,7 +226,7 @@ $systemInfo = [
     'upload_max_filesize' => ini_get('upload_max_filesize'),
     'post_max_size' => ini_get('post_max_size'),
     'disk_space' => disk_free_space('../../'),
-    'mysql_version' => $conn->getConnection()->server_info
+    'mysql_version' => $conn->getConnection()->getAttribute(PDO::ATTR_SERVER_VERSION)
 ];
 
 // Include header
