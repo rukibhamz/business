@@ -237,17 +237,41 @@ function installDatabaseSchema($pdo, $prefix = 'bms_') {
             $sql = str_replace('bms_', $prefix, $sql);
         }
         
-        // Split SQL into individual statements
-        $statements = array_filter(array_map('trim', explode(';', $sql)));
+        // Split SQL into individual statements - improved parsing
+        $statements = [];
+        $currentStatement = '';
+        $lines = explode("\n", $sql);
+        
+        foreach ($lines as $line) {
+            $line = trim($line);
+            
+            // Skip comments and empty lines
+            if (empty($line) || strpos($line, '--') === 0 || strpos($line, '/*') === 0) {
+                continue;
+            }
+            
+            $currentStatement .= $line . "\n";
+            
+            // Check if statement ends with semicolon
+            if (substr(rtrim($line), -1) === ';') {
+                $statements[] = trim($currentStatement);
+                $currentStatement = '';
+            }
+        }
+        
+        // Add any remaining statement
+        if (!empty(trim($currentStatement))) {
+            $statements[] = trim($currentStatement);
+        }
         
         $executedStatements = 0;
         foreach ($statements as $statement) {
-            if (!empty($statement) && !preg_match('/^(--|\/\*)/', $statement)) {
+            if (!empty($statement)) {
                 try {
                     $pdo->exec($statement);
                     $executedStatements++;
+                    error_log("Executed SQL: " . substr($statement, 0, 100) . "...");
                 } catch (PDOException $e) {
-                    // Log the specific statement that failed
                     error_log("Failed to execute SQL statement: " . $statement);
                     error_log("Error: " . $e->getMessage());
                     throw $e;
@@ -272,6 +296,9 @@ function installDatabaseSchema($pdo, $prefix = 'bms_') {
  */
 function verifyDatabaseTables($pdo, $prefix = 'bms_') {
     try {
+        // Force a fresh connection to ensure we see the latest tables
+        $pdo->exec("FLUSH TABLES");
+        
         $requiredTables = [
             $prefix . 'users',
             $prefix . 'roles', 
@@ -286,6 +313,9 @@ function verifyDatabaseTables($pdo, $prefix = 'bms_') {
         while ($row = $stmt->fetch(PDO::FETCH_NUM)) {
             $existingTables[] = $row[0];
         }
+        
+        error_log("Required tables: " . implode(', ', $requiredTables));
+        error_log("Existing tables: " . implode(', ', $existingTables));
         
         $missingTables = array_diff($requiredTables, $existingTables);
         
