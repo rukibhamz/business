@@ -24,10 +24,6 @@ requirePermission('halls.bookings');
 // Get database connection
 $conn = getDB();
 
-// Get parameters
-$hallId = (int)($_GET['hall_id'] ?? 0);
-$date = $_GET['date'] ?? '';
-
 // Initialize variables
 $errors = [];
 $success = false;
@@ -45,15 +41,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'customer_id' => (int)($_POST['customer_id'] ?? 0),
             'event_name' => trim($_POST['event_name'] ?? ''),
             'event_type' => trim($_POST['event_type'] ?? ''),
-            'start_date' => trim($_POST['start_date'] ?? ''),
-            'start_time' => trim($_POST['start_time'] ?? ''),
-            'end_date' => trim($_POST['end_date'] ?? ''),
-            'end_time' => trim($_POST['end_time'] ?? ''),
+            'start_date' => $_POST['start_date'] ?? '',
+            'start_time' => $_POST['start_time'] ?? '',
+            'end_date' => $_POST['end_date'] ?? '',
+            'end_time' => $_POST['end_time'] ?? '',
             'attendee_count' => (int)($_POST['attendee_count'] ?? 0),
+            'payment_type' => $_POST['payment_type'] ?? 'Full Payment',
             'special_requirements' => trim($_POST['special_requirements'] ?? ''),
-            'payment_type' => trim($_POST['payment_type'] ?? 'Full Payment'),
-            'amount_paid' => (float)($_POST['amount_paid'] ?? 0),
-            'booking_source' => 'Admin'
+            'booking_source' => 'Admin',
+            'created_by' => $_SESSION['user_id']
         ];
 
         // Validation
@@ -65,73 +61,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $errors[] = 'Event name is required.';
         }
 
-        if (empty($bookingData['start_date'])) {
-            $errors[] = 'Start date is required.';
+        if (empty($bookingData['start_date']) || empty($bookingData['start_time'])) {
+            $errors[] = 'Start date and time are required.';
         }
 
-        if (empty($bookingData['start_time'])) {
-            $errors[] = 'Start time is required.';
+        if (empty($bookingData['end_date']) || empty($bookingData['end_time'])) {
+            $errors[] = 'End date and time are required.';
         }
 
-        if (empty($bookingData['end_date'])) {
-            $errors[] = 'End date is required.';
-        }
-
-        if (empty($bookingData['end_time'])) {
-            $errors[] = 'End time is required.';
-        }
-
-        // Validate date/time logic
-        if (empty($errors)) {
-            $startDateTime = new DateTime($bookingData['start_date'] . ' ' . $bookingData['start_time']);
-            $endDateTime = new DateTime($bookingData['end_date'] . ' ' . $bookingData['end_time']);
-
-            if ($endDateTime <= $startDateTime) {
-                $errors[] = 'End date/time must be after start date/time.';
-            }
-
-            // Calculate duration
-            $duration = $endDateTime->diff($startDateTime);
-            $durationHours = $duration->days * 24 + $duration->h + ($duration->i / 60);
-            $bookingData['duration_hours'] = $durationHours;
-
-            if ($durationHours <= 0) {
-                $errors[] = 'Booking duration must be greater than 0.';
+        if ($bookingData['start_date'] && $bookingData['end_date'] && $bookingData['start_time'] && $bookingData['end_time']) {
+            $startDateTime = $bookingData['start_date'] . ' ' . $bookingData['start_time'];
+            $endDateTime = $bookingData['end_date'] . ' ' . $bookingData['end_time'];
+            
+            if (strtotime($endDateTime) <= strtotime($startDateTime)) {
+                $errors[] = 'End date and time must be after start date and time.';
             }
         }
 
-        // Check hall availability
+        // Check availability
         if (empty($errors)) {
-            if (!checkHallAvailability($bookingData['hall_id'], $bookingData['start_date'], $bookingData['start_time'], $bookingData['end_date'], $bookingData['end_time'])) {
+            $isAvailable = checkHallAvailability(
+                $bookingData['hall_id'],
+                $bookingData['start_date'],
+                $bookingData['start_time'],
+                $bookingData['end_date'],
+                $bookingData['end_time']
+            );
+            
+            if (!$isAvailable) {
                 $errors[] = 'Hall is not available for the selected date and time.';
             }
         }
 
-        // Calculate pricing
+        // Calculate duration and pricing
         if (empty($errors)) {
-            $hallRental = calculateHallRental($bookingData['hall_id'], $bookingData['start_date'], $bookingData['start_time'], $bookingData['end_date'], $bookingData['end_time']);
-            $serviceFee = getHallSetting('service_fee_percentage', 2.5);
-            $taxRate = getHallSetting('tax_rate', 7.5);
+            $startDateTime = new DateTime($bookingData['start_date'] . ' ' . $bookingData['start_time']);
+            $endDateTime = new DateTime($bookingData['end_date'] . ' ' . $bookingData['end_time']);
+            $duration = $endDateTime->diff($startDateTime);
+            $bookingData['duration_hours'] = $duration->days * 24 + $duration->h + ($duration->i / 60);
             
-            $totals = calculateBookingTotals($hallRental, $serviceFee, $taxRate);
+            $bookingData['hall_rental'] = calculateHallRental(
+                $bookingData['hall_id'],
+                $bookingData['start_date'],
+                $bookingData['start_time'],
+                $bookingData['end_date'],
+                $bookingData['end_time']
+            );
             
-            $bookingData['subtotal'] = $totals['subtotal'];
-            $bookingData['service_fee'] = $totals['service_fee'];
-            $bookingData['tax_amount'] = $totals['tax_amount'];
-            $bookingData['total_amount'] = $totals['total_amount'];
-            $bookingData['balance_due'] = $totals['total_amount'] - $bookingData['amount_paid'];
-            
-            // Set payment status
-            if ($bookingData['amount_paid'] >= $totals['total_amount']) {
-                $bookingData['payment_status'] = 'Paid';
-            } elseif ($bookingData['amount_paid'] > 0) {
-                $bookingData['payment_status'] = 'Partial';
-            } else {
-                $bookingData['payment_status'] = 'Pending';
-            }
-            
-            $bookingData['booking_status'] = 'Pending';
-            $bookingData['created_by'] = $_SESSION['user_id'];
+            $bookingData['service_fee'] = 0;
+            $bookingData['tax_rate'] = (float)getHallSetting('tax_rate', 7.5);
         }
 
         // Create booking if no errors
@@ -139,14 +117,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             try {
                 $bookingId = createHallBooking($bookingData);
                 
-                // Log activity
-                logActivity("Hall booking created: {$bookingData['event_name']}", $bookingId, 'hall_booking');
-                
-                $success = true;
-                
-                // Redirect to booking view page
-                header("Location: view.php?id={$bookingId}&success=1");
-                exit;
+                if ($bookingId) {
+                    $success = true;
+                    // Redirect to booking view page
+                    header("Location: view.php?id={$bookingId}&success=1");
+                    exit;
+                } else {
+                    $errors[] = 'Failed to create booking. Please try again.';
+                }
             } catch (Exception $e) {
                 $errors[] = 'Database error: ' . $e->getMessage();
             }
@@ -156,39 +134,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // Get halls for dropdown
 $halls = $conn->query("
-    SELECT id, hall_name, hall_code, capacity, hourly_rate, daily_rate, weekly_rate, monthly_rate, currency
+    SELECT id, hall_name, hall_code, capacity 
     FROM " . DB_PREFIX . "halls 
-    WHERE status = 'Available' AND enable_booking = 1
+    WHERE status = 'Available' AND enable_booking = 1 
     ORDER BY hall_name
 ")->fetch_all(MYSQLI_ASSOC);
 
 // Get customers for dropdown
 $customers = $conn->query("
-    SELECT id, first_name, last_name, company_name, email, phone
+    SELECT id, CONCAT(first_name, ' ', last_name) as full_name, company_name, email 
     FROM " . DB_PREFIX . "customers 
-    WHERE status = 'active'
-    ORDER BY company_name, first_name, last_name
+    ORDER BY first_name, last_name
 ")->fetch_all(MYSQLI_ASSOC);
 
-// Set default values
-if ($hallId > 0) {
-    $bookingData['hall_id'] = $hallId;
-}
-if (!empty($date)) {
-    $bookingData['start_date'] = $date;
-    $bookingData['end_date'] = $date;
-}
-
 // Set page title
-$pageTitle = 'Create Hall Booking';
+$pageTitle = 'Add Hall Booking';
 
 include '../../includes/header.php';
 ?>
 
 <div class="page-header">
     <div class="page-title">
-        <h1>Create Hall Booking</h1>
-        <p>Book a hall for an event</p>
+        <h1>Add Hall Booking</h1>
+        <p>Create a new hall booking</p>
     </div>
     <div class="page-actions">
         <a href="index.php" class="btn btn-secondary">
@@ -212,11 +180,11 @@ include '../../includes/header.php';
     <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
     
     <div class="row">
-        <!-- Booking Details -->
+        <!-- Booking Information -->
         <div class="col-md-8">
             <div class="card">
                 <div class="card-header">
-                    <h3>Booking Details</h3>
+                    <h3>Booking Information</h3>
                 </div>
                 <div class="card-body">
                     <div class="row">
@@ -227,13 +195,8 @@ include '../../includes/header.php';
                                     <option value="">Select Hall</option>
                                     <?php foreach ($halls as $hall): ?>
                                     <option value="<?php echo $hall['id']; ?>" 
-                                            <?php echo ($bookingData['hall_id'] ?? '') == $hall['id'] ? 'selected' : ''; ?>
-                                            data-hourly-rate="<?php echo $hall['hourly_rate']; ?>"
-                                            data-daily-rate="<?php echo $hall['daily_rate']; ?>"
-                                            data-weekly-rate="<?php echo $hall['weekly_rate']; ?>"
-                                            data-monthly-rate="<?php echo $hall['monthly_rate']; ?>"
-                                            data-currency="<?php echo $hall['currency']; ?>">
-                                        <?php echo htmlspecialchars($hall['hall_name'] . ' (' . $hall['hall_code'] . ') - Capacity: ' . $hall['capacity']); ?>
+                                            <?php echo ($bookingData['hall_id'] ?? '') == $hall['id'] ? 'selected' : ''; ?>>
+                                        <?php echo htmlspecialchars($hall['hall_name'] . ' (' . $hall['hall_code'] . ')'); ?>
                                     </option>
                                     <?php endforeach; ?>
                                 </select>
@@ -246,11 +209,11 @@ include '../../includes/header.php';
                             <div class="form-group">
                                 <label for="customer_id">Customer</label>
                                 <select id="customer_id" name="customer_id" class="form-control">
-                                    <option value="">Select Customer (Optional)</option>
+                                    <option value="">Select Customer</option>
                                     <?php foreach ($customers as $customer): ?>
                                     <option value="<?php echo $customer['id']; ?>" 
                                             <?php echo ($bookingData['customer_id'] ?? '') == $customer['id'] ? 'selected' : ''; ?>>
-                                        <?php echo htmlspecialchars(($customer['company_name'] ?: $customer['first_name'] . ' ' . $customer['last_name']) . ' (' . $customer['email'] . ')'); ?>
+                                        <?php echo htmlspecialchars($customer['full_name'] . ($customer['company_name'] ? ' (' . $customer['company_name'] . ')' : '')); ?>
                                     </option>
                                     <?php endforeach; ?>
                                 </select>
@@ -276,12 +239,11 @@ include '../../includes/header.php';
                                 <select id="event_type" name="event_type" class="form-control">
                                     <option value="">Select Event Type</option>
                                     <option value="Conference" <?php echo ($bookingData['event_type'] ?? '') == 'Conference' ? 'selected' : ''; ?>>Conference</option>
-                                    <option value="Wedding" <?php echo ($bookingData['event_type'] ?? '') == 'Wedding' ? 'selected' : ''; ?>>Wedding</option>
                                     <option value="Meeting" <?php echo ($bookingData['event_type'] ?? '') == 'Meeting' ? 'selected' : ''; ?>>Meeting</option>
-                                    <option value="Banquet" <?php echo ($bookingData['event_type'] ?? '') == 'Banquet' ? 'selected' : ''; ?>>Banquet</option>
-                                    <option value="Exhibition" <?php echo ($bookingData['event_type'] ?? '') == 'Exhibition' ? 'selected' : ''; ?>>Exhibition</option>
+                                    <option value="Wedding" <?php echo ($bookingData['event_type'] ?? '') == 'Wedding' ? 'selected' : ''; ?>>Wedding</option>
+                                    <option value="Birthday Party" <?php echo ($bookingData['event_type'] ?? '') == 'Birthday Party' ? 'selected' : ''; ?>>Birthday Party</option>
+                                    <option value="Corporate Event" <?php echo ($bookingData['event_type'] ?? '') == 'Corporate Event' ? 'selected' : ''; ?>>Corporate Event</option>
                                     <option value="Training" <?php echo ($bookingData['event_type'] ?? '') == 'Training' ? 'selected' : ''; ?>>Training</option>
-                                    <option value="Party" <?php echo ($bookingData['event_type'] ?? '') == 'Party' ? 'selected' : ''; ?>>Party</option>
                                     <option value="Other" <?php echo ($bookingData['event_type'] ?? '') == 'Other' ? 'selected' : ''; ?>>Other</option>
                                 </select>
                             </div>
@@ -357,62 +319,23 @@ include '../../includes/header.php';
 
                     <div class="form-group">
                         <label for="special_requirements">Special Requirements</label>
-                        <textarea id="special_requirements" name="special_requirements" class="form-control" rows="3" 
-                                  placeholder="Any special requirements, equipment needed, or notes"><?php echo htmlspecialchars($bookingData['special_requirements'] ?? ''); ?></textarea>
+                        <textarea id="special_requirements" name="special_requirements" class="form-control" rows="4" 
+                                  placeholder="Any special requirements or notes..."><?php echo htmlspecialchars($bookingData['special_requirements'] ?? ''); ?></textarea>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Pricing & Payment -->
+        <!-- Booking Summary -->
         <div class="col-md-4">
             <div class="card">
                 <div class="card-header">
-                    <h3>Pricing & Payment</h3>
+                    <h3>Booking Summary</h3>
                 </div>
                 <div class="card-body">
-                    <div id="pricing-summary">
-                        <div class="pricing-item">
-                            <label>Hall Rental:</label>
-                            <span id="hall-rental">₦0.00</span>
-                        </div>
-                        <div class="pricing-item">
-                            <label>Service Fee:</label>
-                            <span id="service-fee">₦0.00</span>
-                        </div>
-                        <div class="pricing-item">
-                            <label>Tax:</label>
-                            <span id="tax-amount">₦0.00</span>
-                        </div>
-                        <hr>
-                        <div class="pricing-item total">
-                            <label>Total Amount:</label>
-                            <span id="total-amount">₦0.00</span>
-                        </div>
+                    <div id="booking-summary">
+                        <p class="text-muted">Select a hall and date/time to see pricing details.</p>
                     </div>
-
-                    <div class="form-group mt-3">
-                        <label for="amount_paid">Amount Paid</label>
-                        <input type="number" id="amount_paid" name="amount_paid" class="form-control" 
-                               value="<?php echo htmlspecialchars($bookingData['amount_paid'] ?? '0'); ?>" 
-                               step="0.01" min="0">
-                        <small class="form-text text-muted">Enter amount paid upfront</small>
-                    </div>
-
-                    <div class="pricing-item">
-                        <label>Balance Due:</label>
-                        <span id="balance-due">₦0.00</span>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Hall Information -->
-            <div class="card">
-                <div class="card-header">
-                    <h3>Hall Information</h3>
-                </div>
-                <div class="card-body" id="hall-info">
-                    <p class="text-muted">Select a hall to view details</p>
                 </div>
             </div>
         </div>
@@ -446,132 +369,28 @@ include '../../includes/header.php';
     }, false);
 })();
 
-// Pricing calculation
-document.addEventListener('DOMContentLoaded', function() {
-    const hallSelect = document.getElementById('hall_id');
-    const startDate = document.getElementById('start_date');
-    const startTime = document.getElementById('start_time');
-    const endDate = document.getElementById('end_date');
-    const endTime = document.getElementById('end_time');
-    const amountPaid = document.getElementById('amount_paid');
-
-    function calculatePricing() {
-        const hallId = hallSelect.value;
-        const startDateTime = startDate.value + ' ' + startTime.value;
-        const endDateTime = endDate.value + ' ' + endTime.value;
-
-        if (!hallId || !startDateTime || !endDateTime) {
-            updatePricingDisplay(0, 0, 0, 0);
-            return;
-        }
-
-        // Calculate duration
-        const start = new Date(startDateTime);
-        const end = new Date(endDateTime);
-        const durationMs = end - start;
-        const durationHours = durationMs / (1000 * 60 * 60);
-
-        if (durationHours <= 0) {
-            updatePricingDisplay(0, 0, 0, 0);
-            return;
-        }
-
-        // Get hall pricing
-        const selectedOption = hallSelect.options[hallSelect.selectedIndex];
-        const hourlyRate = parseFloat(selectedOption.dataset.hourlyRate) || 0;
-        const dailyRate = parseFloat(selectedOption.dataset.dailyRate) || 0;
-        const weeklyRate = parseFloat(selectedOption.dataset.weeklyRate) || 0;
-        const monthlyRate = parseFloat(selectedOption.dataset.monthlyRate) || 0;
-        const currency = selectedOption.dataset.currency || 'NGN';
-
-        // Calculate hall rental based on duration
-        let hallRental = 0;
-        const days = Math.floor(durationHours / 24);
-        const remainingHours = durationHours % 24;
-
-        if (days >= 30) {
-            hallRental = monthlyRate * Math.floor(days / 30) + (dailyRate * (days % 30)) + (hourlyRate * remainingHours);
-        } else if (days >= 7) {
-            hallRental = weeklyRate * Math.floor(days / 7) + (dailyRate * (days % 7)) + (hourlyRate * remainingHours);
-        } else if (days >= 1) {
-            hallRental = dailyRate * days + (hourlyRate * remainingHours);
-        } else {
-            hallRental = hourlyRate * durationHours;
-        }
-
-        // Calculate service fee and tax
-        const serviceFeeRate = 2.5; // Default service fee percentage
-        const taxRate = 7.5; // Default tax rate
-
-        const serviceFee = hallRental * (serviceFeeRate / 100);
-        const subtotal = hallRental + serviceFee;
-        const taxAmount = subtotal * (taxRate / 100);
-        const totalAmount = subtotal + taxAmount;
-
-        updatePricingDisplay(hallRental, serviceFee, taxAmount, totalAmount);
-        updateHallInfo(selectedOption);
+// Auto-set end date when start date changes
+document.getElementById('start_date').addEventListener('change', function() {
+    const endDateInput = document.getElementById('end_date');
+    if (!endDateInput.value) {
+        endDateInput.value = this.value;
     }
-
-    function updatePricingDisplay(hallRental, serviceFee, taxAmount, totalAmount) {
-        document.getElementById('hall-rental').textContent = formatCurrency(hallRental);
-        document.getElementById('service-fee').textContent = formatCurrency(serviceFee);
-        document.getElementById('tax-amount').textContent = formatCurrency(taxAmount);
-        document.getElementById('total-amount').textContent = formatCurrency(totalAmount);
-
-        const amountPaid = parseFloat(document.getElementById('amount_paid').value) || 0;
-        const balanceDue = totalAmount - amountPaid;
-        document.getElementById('balance-due').textContent = formatCurrency(balanceDue);
-    }
-
-    function updateHallInfo(selectedOption) {
-        const hallInfo = document.getElementById('hall-info');
-        if (selectedOption.value) {
-            const hallText = selectedOption.textContent;
-            const capacity = hallText.match(/Capacity: (\d+)/);
-            const hourlyRate = parseFloat(selectedOption.dataset.hourlyRate) || 0;
-            const dailyRate = parseFloat(selectedOption.dataset.dailyRate) || 0;
-            const currency = selectedOption.dataset.currency || 'NGN';
-
-            let infoHtml = '<div class="hall-details">';
-            if (capacity) {
-                infoHtml += '<p><strong>Capacity:</strong> ' + capacity[1] + ' people</p>';
-            }
-            if (hourlyRate > 0) {
-                infoHtml += '<p><strong>Hourly Rate:</strong> ' + formatCurrency(hourlyRate) + '</p>';
-            }
-            if (dailyRate > 0) {
-                infoHtml += '<p><strong>Daily Rate:</strong> ' + formatCurrency(dailyRate) + '</p>';
-            }
-            infoHtml += '</div>';
-
-            hallInfo.innerHTML = infoHtml;
-        } else {
-            hallInfo.innerHTML = '<p class="text-muted">Select a hall to view details</p>';
-        }
-    }
-
-    function formatCurrency(amount) {
-        return '₦' + parseFloat(amount).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-    }
-
-    // Event listeners
-    hallSelect.addEventListener('change', calculatePricing);
-    startDate.addEventListener('change', calculatePricing);
-    startTime.addEventListener('change', calculatePricing);
-    endDate.addEventListener('change', calculatePricing);
-    endTime.addEventListener('change', calculatePricing);
-    amountPaid.addEventListener('input', calculatePricing);
-
-    // Auto-set end date to start date if not set
-    startDate.addEventListener('change', function() {
-        if (!endDate.value) {
-            endDate.value = startDate.value;
-        }
-    });
-
-    // Initial calculation
-    calculatePricing();
 });
+
+// Auto-set end time when start time changes
+document.getElementById('start_time').addEventListener('change', function() {
+    const endTimeInput = document.getElementById('end_time');
+    if (!endTimeInput.value) {
+        const startTime = new Date('2000-01-01 ' + this.value);
+        const endTime = new Date(startTime.getTime() + 2 * 60 * 60 * 1000); // Add 2 hours
+        endTimeInput.value = endTime.toTimeString().slice(0, 5);
+    }
+});
+
+// Set minimum date to today
+const today = new Date().toISOString().split('T')[0];
+document.getElementById('start_date').setAttribute('min', today);
+document.getElementById('end_date').setAttribute('min', today);
 </script>
 
 <style>
@@ -613,28 +432,7 @@ document.addEventListener('DOMContentLoaded', function() {
 .was-validated .form-control:invalid ~ .invalid-feedback {
     display: block;
 }
-
-.pricing-item {
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 10px;
-}
-
-.pricing-item.total {
-    font-weight: bold;
-    font-size: 1.1em;
-    border-top: 1px solid #dee2e6;
-    padding-top: 10px;
-    margin-top: 10px;
-}
-
-.hall-details p {
-    margin-bottom: 8px;
-}
-
-.hall-details p:last-child {
-    margin-bottom: 0;
-}
 </style>
 
 <?php include '../../includes/footer.php'; ?>
+

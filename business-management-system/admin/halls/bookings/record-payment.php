@@ -21,21 +21,21 @@ require_once '../../../includes/hall-functions.php';
 requireLogin();
 requirePermission('halls.bookings');
 
-// Get database connection
-$conn = getDB();
-
 // Get booking ID
 $bookingId = (int)($_GET['id'] ?? 0);
 
-if ($bookingId <= 0) {
+if (!$bookingId) {
     header('Location: index.php');
     exit;
 }
 
+// Get database connection
+$conn = getDB();
+
 // Get booking details
 $stmt = $conn->prepare("
-    SELECT hb.*, h.hall_name, h.hall_code, h.currency,
-           c.first_name, c.last_name, c.company_name, c.email as customer_email
+    SELECT hb.*, h.hall_name, h.hall_code,
+           c.first_name, c.last_name, c.company_name
     FROM " . DB_PREFIX . "hall_bookings hb
     JOIN " . DB_PREFIX . "halls h ON hb.hall_id = h.id
     LEFT JOIN " . DB_PREFIX . "customers c ON hb.customer_id = c.id
@@ -65,10 +65,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $paymentData = [
             'amount' => (float)($_POST['amount'] ?? 0),
             'payment_method' => trim($_POST['payment_method'] ?? ''),
-            'payment_date' => trim($_POST['payment_date'] ?? ''),
             'reference' => trim($_POST['reference'] ?? ''),
-            'notes' => trim($_POST['notes'] ?? ''),
-            'is_deposit' => isset($_POST['is_deposit']) ? 1 : 0
+            'is_deposit' => isset($_POST['is_deposit']) ? 1 : 0,
+            'notes' => trim($_POST['notes'] ?? '')
         ];
 
         // Validation
@@ -77,15 +76,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($paymentData['amount'] > $booking['balance_due']) {
-            $errors[] = 'Payment amount cannot exceed the balance due.';
+            $errors[] = 'Payment amount cannot exceed balance due (' . formatCurrency($booking['balance_due']) . ').';
         }
 
         if (empty($paymentData['payment_method'])) {
             $errors[] = 'Payment method is required.';
-        }
-
-        if (empty($paymentData['payment_date'])) {
-            $errors[] = 'Payment date is required.';
         }
 
         // Record payment if no errors
@@ -98,34 +93,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $paymentData['reference'],
                     $paymentData['is_deposit']
                 );
-
-                // Update payment record with additional details
-                $stmt = $conn->prepare("
-                    UPDATE " . DB_PREFIX . "hall_booking_payments 
-                    SET payment_date = ?, notes = ?
-                    WHERE id = ?
-                ");
-                $stmt->bind_param('ssi', $paymentData['payment_date'], $paymentData['notes'], $paymentId);
-                $stmt->execute();
-
-                // Log activity
-                logActivity("Payment recorded for booking {$booking['booking_number']}: " . formatCurrency($paymentData['amount'], $booking['currency']), $bookingId, 'hall_booking');
-
-                $success = true;
-
-                // Redirect to booking view page
-                header("Location: view.php?id={$bookingId}&success=1");
-                exit;
+                
+                if ($paymentId) {
+                    $success = true;
+                    // Redirect to booking view page
+                    header("Location: view.php?id={$bookingId}&success=payment_recorded");
+                    exit;
+                } else {
+                    $errors[] = 'Failed to record payment. Please try again.';
+                }
             } catch (Exception $e) {
                 $errors[] = 'Database error: ' . $e->getMessage();
             }
         }
     }
-}
-
-// Set default payment date to today
-if (empty($paymentData['payment_date'])) {
-    $paymentData['payment_date'] = date('Y-m-d');
 }
 
 // Set page title
@@ -137,34 +118,34 @@ include '../../includes/header.php';
 <div class="page-header">
     <div class="page-title">
         <h1>Record Payment</h1>
-        <p><?php echo htmlspecialchars($booking['booking_number']); ?> • <?php echo htmlspecialchars($booking['event_name']); ?></p>
+        <p>Booking #<?php echo htmlspecialchars($booking['booking_number']); ?></p>
     </div>
     <div class="page-actions">
-        <a href="view.php?id=<?php echo $booking['id']; ?>" class="btn btn-secondary">
+        <a href="view.php?id=<?php echo $bookingId; ?>" class="btn btn-secondary">
             <i class="icon-arrow-left"></i> Back to Booking
         </a>
     </div>
 </div>
-
-<?php if (!empty($errors)): ?>
-<div class="alert alert-danger">
-    <h4>Please correct the following errors:</h4>
-    <ul class="mb-0">
-        <?php foreach ($errors as $error): ?>
-        <li><?php echo htmlspecialchars($error); ?></li>
-        <?php endforeach; ?>
-    </ul>
-</div>
-<?php endif; ?>
 
 <div class="row">
     <!-- Payment Form -->
     <div class="col-md-8">
         <div class="card">
             <div class="card-header">
-                <h3>Payment Details</h3>
+                <h3>Payment Information</h3>
             </div>
             <div class="card-body">
+                <?php if (!empty($errors)): ?>
+                <div class="alert alert-danger">
+                    <h4>Please correct the following errors:</h4>
+                    <ul class="mb-0">
+                        <?php foreach ($errors as $error): ?>
+                        <li><?php echo htmlspecialchars($error); ?></li>
+                        <?php endforeach; ?>
+                    </ul>
+                </div>
+                <?php endif; ?>
+
                 <form method="POST" class="needs-validation" novalidate>
                     <input type="hidden" name="csrf_token" value="<?php echo generateCSRFToken(); ?>">
                     
@@ -172,16 +153,11 @@ include '../../includes/header.php';
                         <div class="col-md-6">
                             <div class="form-group">
                                 <label for="amount">Payment Amount <span class="text-danger">*</span></label>
-                                <div class="input-group">
-                                    <div class="input-group-prepend">
-                                        <span class="input-group-text"><?php echo $booking['currency']; ?></span>
-                                    </div>
-                                    <input type="number" id="amount" name="amount" class="form-control" 
-                                           value="<?php echo htmlspecialchars($paymentData['amount'] ?? ''); ?>" 
-                                           step="0.01" min="0.01" max="<?php echo $booking['balance_due']; ?>" required>
-                                </div>
+                                <input type="number" id="amount" name="amount" class="form-control" 
+                                       value="<?php echo htmlspecialchars($paymentData['amount'] ?? ''); ?>" 
+                                       step="0.01" min="0.01" max="<?php echo $booking['balance_due']; ?>" required>
                                 <small class="form-text text-muted">
-                                    Maximum: <?php echo formatCurrency($booking['balance_due'], $booking['currency']); ?>
+                                    Maximum: <?php echo formatCurrency($booking['balance_due']); ?>
                                 </small>
                                 <div class="invalid-feedback">
                                     Please provide a valid payment amount.
@@ -199,8 +175,6 @@ include '../../includes/header.php';
                                     <option value="Credit Card" <?php echo ($paymentData['payment_method'] ?? '') == 'Credit Card' ? 'selected' : ''; ?>>Credit Card</option>
                                     <option value="Debit Card" <?php echo ($paymentData['payment_method'] ?? '') == 'Debit Card' ? 'selected' : ''; ?>>Debit Card</option>
                                     <option value="Mobile Money" <?php echo ($paymentData['payment_method'] ?? '') == 'Mobile Money' ? 'selected' : ''; ?>>Mobile Money</option>
-                                    <option value="Paystack" <?php echo ($paymentData['payment_method'] ?? '') == 'Paystack' ? 'selected' : ''; ?>>Paystack</option>
-                                    <option value="Flutterwave" <?php echo ($paymentData['payment_method'] ?? '') == 'Flutterwave' ? 'selected' : ''; ?>>Flutterwave</option>
                                     <option value="Other" <?php echo ($paymentData['payment_method'] ?? '') == 'Other' ? 'selected' : ''; ?>>Other</option>
                                 </select>
                                 <div class="invalid-feedback">
@@ -213,21 +187,21 @@ include '../../includes/header.php';
                     <div class="row">
                         <div class="col-md-6">
                             <div class="form-group">
-                                <label for="payment_date">Payment Date <span class="text-danger">*</span></label>
-                                <input type="date" id="payment_date" name="payment_date" class="form-control" 
-                                       value="<?php echo htmlspecialchars($paymentData['payment_date'] ?? ''); ?>" 
-                                       required>
-                                <div class="invalid-feedback">
-                                    Please provide a payment date.
-                                </div>
+                                <label for="reference">Payment Reference</label>
+                                <input type="text" id="reference" name="reference" class="form-control" 
+                                       value="<?php echo htmlspecialchars($paymentData['reference'] ?? ''); ?>" 
+                                       placeholder="Transaction ID, cheque number, etc.">
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="form-group">
-                                <label for="reference">Reference Number</label>
-                                <input type="text" id="reference" name="reference" class="form-control" 
-                                       value="<?php echo htmlspecialchars($paymentData['reference'] ?? ''); ?>" 
-                                       placeholder="Transaction reference, cheque number, etc.">
+                                <div class="form-check">
+                                    <input type="checkbox" id="is_deposit" name="is_deposit" class="form-check-input" 
+                                           <?php echo ($paymentData['is_deposit'] ?? 0) ? 'checked' : ''; ?>>
+                                    <label class="form-check-label" for="is_deposit">
+                                        This is a deposit payment
+                                    </label>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -235,25 +209,14 @@ include '../../includes/header.php';
                     <div class="form-group">
                         <label for="notes">Notes</label>
                         <textarea id="notes" name="notes" class="form-control" rows="3" 
-                                  placeholder="Additional notes about this payment"><?php echo htmlspecialchars($paymentData['notes'] ?? ''); ?></textarea>
-                    </div>
-
-                    <div class="form-group">
-                        <div class="form-check">
-                            <input type="checkbox" id="is_deposit" name="is_deposit" class="form-check-input" 
-                                   <?php echo ($paymentData['is_deposit'] ?? 0) ? 'checked' : ''; ?>>
-                            <label class="form-check-label" for="is_deposit">
-                                This is a deposit payment
-                            </label>
-                            <small class="form-text text-muted">Check this if this payment is a deposit for the booking</small>
-                        </div>
+                                  placeholder="Additional notes about this payment..."><?php echo htmlspecialchars($paymentData['notes'] ?? ''); ?></textarea>
                     </div>
 
                     <div class="form-actions">
                         <button type="submit" class="btn btn-primary">
-                            <i class="icon-save"></i> Record Payment
+                            <i class="icon-credit-card"></i> Record Payment
                         </button>
-                        <a href="view.php?id=<?php echo $booking['id']; ?>" class="btn btn-secondary">
+                        <a href="view.php?id=<?php echo $bookingId; ?>" class="btn btn-secondary">
                             <i class="icon-times"></i> Cancel
                         </a>
                     </div>
@@ -269,70 +232,55 @@ include '../../includes/header.php';
                 <h3>Booking Summary</h3>
             </div>
             <div class="card-body">
-                <div class="booking-summary">
-                    <div class="summary-item">
+                <div class="booking-info">
+                    <div class="info-group">
                         <label>Booking Number:</label>
                         <span><?php echo htmlspecialchars($booking['booking_number']); ?></span>
                     </div>
-                    
-                    <div class="summary-item">
-                        <label>Event:</label>
-                        <span><?php echo htmlspecialchars($booking['event_name']); ?></span>
-                    </div>
-                    
-                    <div class="summary-item">
+                    <div class="info-group">
                         <label>Hall:</label>
-                        <span><?php echo htmlspecialchars($booking['hall_name']); ?></span>
+                        <span><?php echo htmlspecialchars($booking['hall_name'] . ' (' . $booking['hall_code'] . ')'); ?></span>
                     </div>
-                    
-                    <div class="summary-item">
+                    <div class="info-group">
+                        <label>Event:</label>
+                        <span><?php echo htmlspecialchars($booking['event_name'] ?: 'Not specified'); ?></span>
+                    </div>
+                    <div class="info-group">
                         <label>Date:</label>
                         <span><?php echo date('M d, Y', strtotime($booking['start_date'])); ?></span>
                     </div>
-                    
-                    <div class="summary-item">
+                    <div class="info-group">
                         <label>Time:</label>
-                        <span>
-                            <?php echo date('g:i A', strtotime($booking['start_time'])); ?> - 
-                            <?php echo date('g:i A', strtotime($booking['end_time'])); ?>
-                        </span>
+                        <span><?php echo date('g:i A', strtotime($booking['start_time'])); ?> - <?php echo date('g:i A', strtotime($booking['end_time'])); ?></span>
                     </div>
-                    
-                    <?php if ($booking['customer_id']): ?>
-                    <div class="summary-item">
-                        <label>Customer:</label>
-                        <span><?php echo htmlspecialchars($booking['company_name'] ?: $booking['first_name'] . ' ' . $booking['last_name']); ?></span>
-                    </div>
-                    <?php endif; ?>
                 </div>
             </div>
         </div>
 
-        <!-- Payment Summary -->
         <div class="card">
             <div class="card-header">
-                <h3>Payment Summary</h3>
+                <h3>Financial Summary</h3>
             </div>
             <div class="card-body">
-                <div class="payment-summary">
-                    <div class="summary-item">
-                        <label>Total Amount:</label>
-                        <span><?php echo formatCurrency($booking['total_amount'], $booking['currency']); ?></span>
+                <div class="financial-summary">
+                    <div class="summary-row">
+                        <span>Total Amount:</span>
+                        <span><?php echo formatCurrency($booking['total_amount']); ?></span>
                     </div>
-                    
-                    <div class="summary-item">
-                        <label>Amount Paid:</label>
-                        <span class="text-success"><?php echo formatCurrency($booking['amount_paid'], $booking['currency']); ?></span>
+                    <div class="summary-row">
+                        <span>Amount Paid:</span>
+                        <span class="text-success"><?php echo formatCurrency($booking['amount_paid']); ?></span>
                     </div>
-                    
-                    <div class="summary-item">
-                        <label>Balance Due:</label>
-                        <span class="text-danger"><?php echo formatCurrency($booking['balance_due'], $booking['currency']); ?></span>
+                    <div class="summary-row total">
+                        <span>Balance Due:</span>
+                        <span class="text-danger"><?php echo formatCurrency($booking['balance_due']); ?></span>
                     </div>
-                    
-                    <div class="summary-item">
+                </div>
+                
+                <div class="status-badges mt-3">
+                    <div class="status-badge">
                         <label>Payment Status:</label>
-                        <span class="badge <?php echo getPaymentStatusBadgeClass($booking['payment_status']); ?>">
+                        <span class="badge <?php echo getHallPaymentStatusBadgeClass($booking['payment_status']); ?>">
                             <?php echo $booking['payment_status']; ?>
                         </span>
                     </div>
@@ -347,17 +295,14 @@ include '../../includes/header.php';
             </div>
             <div class="card-body">
                 <div class="quick-amounts">
-                    <button type="button" class="btn btn-outline-primary btn-sm quick-amount" data-amount="<?php echo $booking['balance_due']; ?>">
-                        Full Balance (<?php echo formatCurrency($booking['balance_due'], $booking['currency']); ?>)
+                    <button type="button" class="btn btn-outline-primary btn-sm btn-block" 
+                            onclick="setAmount(<?php echo $booking['balance_due']; ?>)">
+                        Full Balance (<?php echo formatCurrency($booking['balance_due']); ?>)
                     </button>
-                    
                     <?php if ($booking['balance_due'] > 0): ?>
-                    <button type="button" class="btn btn-outline-secondary btn-sm quick-amount" data-amount="<?php echo $booking['balance_due'] * 0.5; ?>">
-                        50% (<?php echo formatCurrency($booking['balance_due'] * 0.5, $booking['currency']); ?>)
-                    </button>
-                    
-                    <button type="button" class="btn btn-outline-secondary btn-sm quick-amount" data-amount="<?php echo $booking['balance_due'] * 0.25; ?>">
-                        25% (<?php echo formatCurrency($booking['balance_due'] * 0.25, $booking['currency']); ?>)
+                    <button type="button" class="btn btn-outline-secondary btn-sm btn-block" 
+                            onclick="setAmount(<?php echo $booking['balance_due'] / 2; ?>)">
+                        Half Balance (<?php echo formatCurrency($booking['balance_due'] / 2); ?>)
                     </button>
                     <?php endif; ?>
                 </div>
@@ -384,14 +329,21 @@ include '../../includes/header.php';
     }, false);
 })();
 
-// Quick amount buttons
-document.addEventListener('DOMContentLoaded', function() {
-    document.querySelectorAll('.quick-amount').forEach(button => {
-        button.addEventListener('click', function() {
-            const amount = parseFloat(this.dataset.amount);
-            document.getElementById('amount').value = amount.toFixed(2);
-        });
-    });
+// Set payment amount
+function setAmount(amount) {
+    document.getElementById('amount').value = amount.toFixed(2);
+}
+
+// Validate amount on input
+document.getElementById('amount').addEventListener('input', function() {
+    const amount = parseFloat(this.value);
+    const maxAmount = <?php echo $booking['balance_due']; ?>;
+    
+    if (amount > maxAmount) {
+        this.setCustomValidity('Amount cannot exceed balance due');
+    } else {
+        this.setCustomValidity('');
+    }
 });
 </script>
 
@@ -435,62 +387,65 @@ document.addEventListener('DOMContentLoaded', function() {
     display: block;
 }
 
-.summary-item {
+.info-group {
+    margin-bottom: 15px;
+}
+
+.info-group label {
+    font-weight: 600;
+    color: #666;
+    display: block;
+    margin-bottom: 5px;
+}
+
+.financial-summary {
+    border-top: 1px solid #dee2e6;
+    padding-top: 15px;
+}
+
+.summary-row {
     display: flex;
     justify-content: space-between;
     margin-bottom: 10px;
-    padding-bottom: 5px;
+    padding: 5px 0;
 }
 
-.summary-item:not(:last-child) {
-    border-bottom: 1px solid #f0f0f0;
+.summary-row.total {
+    border-top: 1px solid #dee2e6;
+    font-weight: 600;
+    font-size: 1.1em;
+    margin-top: 10px;
+    padding-top: 10px;
 }
 
-.summary-item label {
+.status-badges {
+    border-top: 1px solid #dee2e6;
+    padding-top: 15px;
+}
+
+.status-badge {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.status-badge label {
     font-weight: 500;
-    margin-bottom: 0;
+    margin: 0;
 }
 
-.text-success { color: #28a745 !important; }
-.text-danger { color: #dc3545 !important; }
+.quick-amounts .btn {
+    margin-bottom: 10px;
+}
 
 .badge-success { background-color: #28a745; color: white; }
-.badge-warning { background-color: #ffc107; color: #333; }
+.badge-secondary { background-color: #6c757d; color: white; }
 .badge-danger { background-color: #dc3545; color: white; }
 .badge-info { background-color: #17a2b8; color: white; }
-.badge-secondary { background-color: #6c757d; color: white; }
-
-.quick-amounts {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.quick-amount {
-    width: 100%;
-    text-align: left;
-}
-
-.quick-amount:hover {
-    background-color: #007bff;
-    color: white;
-}
+.badge-warning { background-color: #ffc107; color: #333; }
+.badge-primary { background-color: #007bff; color: white; }
 </style>
 
-<?php
-function getPaymentStatusBadgeClass($status) {
-    switch ($status) {
-        case 'Paid':
-            return 'badge-success';
-        case 'Partial':
-            return 'badge-warning';
-        case 'Pending':
-            return 'badge-secondary';
-        case 'Refunded':
-            return 'badge-info';
-        default:
-            return 'badge-secondary';
-    }
-}
+<?php include '../../includes/footer.php'; ?>
 
-include '../../includes/footer.php'; ?>
