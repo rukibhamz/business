@@ -177,6 +177,133 @@ function createHallBooking($bookingData) {
     }
 }
 
+/**
+ * Update booking status
+ */
+function updateBookingStatus($bookingId, $status) {
+    $conn = getDB();
+    
+    $stmt = $conn->prepare("
+        UPDATE " . DB_PREFIX . "hall_bookings 
+        SET booking_status = ?, updated_at = NOW() 
+        WHERE id = ?
+    ");
+    $stmt->bind_param('si', $status, $bookingId);
+    
+    return $stmt->execute();
+}
+
+/**
+ * Cancel booking
+ */
+function cancelBooking($bookingId, $reason) {
+    $conn = getDB();
+    
+    try {
+        $conn->begin_transaction();
+        
+        $stmt = $conn->prepare("
+            UPDATE " . DB_PREFIX . "hall_bookings 
+            SET booking_status = 'Cancelled', 
+                cancelled_at = NOW(), 
+                cancellation_reason = ?,
+                updated_at = NOW() 
+            WHERE id = ?
+        ");
+        $stmt->bind_param('si', $reason, $bookingId);
+        $stmt->execute();
+        
+        $conn->commit();
+        return true;
+        
+    } catch (Exception $e) {
+        $conn->rollback();
+        error_log("Error cancelling booking: " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Complete booking
+ */
+function completeBooking($bookingId) {
+    $conn = getDB();
+    
+    $stmt = $conn->prepare("
+        UPDATE " . DB_PREFIX . "hall_bookings 
+        SET booking_status = 'Completed', 
+            checked_out_at = NOW(),
+            updated_at = NOW() 
+        WHERE id = ?
+    ");
+    $stmt->bind_param('i', $bookingId);
+    
+    return $stmt->execute();
+}
+
+/**
+ * Record payment for booking
+ */
+function recordBookingPayment($bookingId, $paymentData) {
+    $conn = getDB();
+    
+    try {
+        $conn->begin_transaction();
+        
+        // Insert payment record
+        $stmt = $conn->prepare("
+            INSERT INTO " . DB_PREFIX . "hall_booking_payments 
+            (booking_id, payment_number, payment_date, amount, payment_method, 
+             status, is_deposit, notes, created_at) 
+            VALUES (?, ?, ?, ?, ?, 'Completed', ?, ?, NOW())
+        ");
+        
+        $stmt->bind_param('issdsis',
+            $bookingId,
+            $paymentData['payment_number'],
+            $paymentData['payment_date'],
+            $paymentData['amount'],
+            $paymentData['payment_method'],
+            $paymentData['is_deposit'],
+            $paymentData['notes']
+        );
+        
+        $stmt->execute();
+        
+        // Update booking payment status
+        $stmt = $conn->prepare("
+            UPDATE " . DB_PREFIX . "hall_bookings 
+            SET amount_paid = amount_paid + ?, 
+                balance_due = total_amount - (amount_paid + ?),
+                payment_status = CASE 
+                    WHEN (amount_paid + ?) >= total_amount THEN 'Paid'
+                    WHEN (amount_paid + ?) > 0 THEN 'Partial'
+                    ELSE 'Pending'
+                END,
+                updated_at = NOW()
+            WHERE id = ?
+        ");
+        
+        $stmt->bind_param('ddddi', 
+            $paymentData['amount'],
+            $paymentData['amount'],
+            $paymentData['amount'],
+            $paymentData['amount'],
+            $bookingId
+        );
+        
+        $stmt->execute();
+        
+        $conn->commit();
+        return true;
+        
+    } catch (Exception $e) {
+        $conn->rollback();
+        error_log("Error recording payment: " . $e->getMessage());
+        return false;
+    }
+}
+
 // --- Statistics Functions ---
 
 /**
