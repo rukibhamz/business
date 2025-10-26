@@ -29,32 +29,43 @@ $menuItems = [
         'id' => 'accounting',
         'title' => 'Accounting',
         'icon' => 'icon-accounting',
-        'url' => '#',
+        'url' => 'accounting/index.php',
         'permission' => 'accounting.view',
         'children' => [
             [
+                'title' => 'Dashboard',
+                'url' => 'accounting/index.php',
+                'permission' => 'accounting.view'
+            ],
+            [
+                'title' => 'Chart of Accounts',
+                'url' => 'accounting/accounts/index.php',
+                'permission' => 'accounting.view'
+            ],
+            [
                 'title' => 'Invoices',
-                'url' => '#',
-                'permission' => 'accounting.invoices.view',
-                'disabled' => true
+                'url' => 'accounting/invoices/index.php',
+                'permission' => 'accounting.view'
             ],
             [
                 'title' => 'Payments',
-                'url' => '#',
-                'permission' => 'accounting.payments.view',
-                'disabled' => true
+                'url' => 'accounting/payments/index.php',
+                'permission' => 'accounting.view'
             ],
             [
                 'title' => 'Expenses',
-                'url' => '#',
-                'permission' => 'accounting.expenses.view',
-                'disabled' => true
+                'url' => 'accounting/expenses/index.php',
+                'permission' => 'accounting.view'
+            ],
+            [
+                'title' => 'Journal Entries',
+                'url' => 'accounting/journal/index.php',
+                'permission' => 'accounting.view'
             ],
             [
                 'title' => 'Reports',
-                'url' => '#',
-                'permission' => 'accounting.reports.view',
-                'disabled' => true
+                'url' => 'accounting/reports/index.php',
+                'permission' => 'accounting.reports'
             ]
         ]
     ],
