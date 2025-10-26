@@ -217,7 +217,8 @@ function handleAdminCreation() {
     
     // Validate admin data
     $errors = [];
-    if (empty($adminData['username']) || !is_string($adminData['username']) || strlen($adminData['username']) < 4) {
+    $username = $adminData['username'];
+    if (empty($username) || !is_string($username) || strlen($username) < 4) {
         $errors[] = 'Username must be at least 4 characters';
     }
     if (empty($adminData['email']) || !isValidEmail($adminData['email'])) {
