@@ -1,0 +1,152 @@
+# Business Management System - Apache Configuration
+# Phase 1: Core Foundation
+
+# Enable rewrite engine
+RewriteEngine On
+
+# Set base directory
+RewriteBase /
+
+# Prevent access to install directory after installation
+RewriteCond %{REQUEST_URI} ^/install/
+RewriteCond %{DOCUMENT_ROOT}/installed.lock -f
+RewriteRule ^(.*)$ / [R=301,L]
+
+# Prevent access to config files
+RewriteRule ^config/ - [F,L]
+
+# Prevent access to includes files
+RewriteRule ^includes/ - [F,L]
+
+# Prevent access to logs directory
+RewriteRule ^logs/ - [F,L]
+
+# Remove .php extension from URLs
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME}\.php -f
+RewriteRule ^(.*)$ $1.php [L]
+
+# Redirect admin URLs without .php
+RewriteRule ^admin/?$ admin/ [L]
+RewriteRule ^admin/([^/]+)/?$ admin/$1.php [L]
+
+# Security headers
+<IfModule mod_headers.c>
+    # Prevent clickjacking
+    Header always append X-Frame-Options SAMEORIGIN
+    
+    # Prevent MIME type sniffing
+    Header always set X-Content-Type-Options nosniff
+    
+    # Enable XSS protection
+    Header always set X-XSS-Protection "1; mode=block"
+    
+    # Referrer policy
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    
+    # Content Security Policy (basic)
+    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self';"
+</IfModule>
+
+# Prevent directory listing
+Options -Indexes
+
+# Protect sensitive files
+<FilesMatch "\.(htaccess|htpasswd|ini|log|sh|inc|bak|sql)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Protect config files
+<FilesMatch "^(config|database|constants)\.php$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Protect installation files
+<FilesMatch "^(install-functions|database)\.(php|sql)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Cache static files
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType text/css "access plus 1 month"
+    ExpiresByType application/javascript "access plus 1 month"
+    ExpiresByType image/png "access plus 1 month"
+    ExpiresByType image/jpg "access plus 1 month"
+    ExpiresByType image/jpeg "access plus 1 month"
+    ExpiresByType image/gif "access plus 1 month"
+    ExpiresByType image/svg+xml "access plus 1 month"
+    ExpiresByType image/webp "access plus 1 month"
+    ExpiresByType font/woff "access plus 1 month"
+    ExpiresByType font/woff2 "access plus 1 month"
+    ExpiresByType application/pdf "access plus 1 month"
+</IfModule>
+
+# Compress files
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/plain
+    AddOutputFilterByType DEFLATE text/html
+    AddOutputFilterByType DEFLATE text/xml
+    AddOutputFilterByType DEFLATE text/css
+    AddOutputFilterByType DEFLATE application/xml
+    AddOutputFilterByType DEFLATE application/xhtml+xml
+    AddOutputFilterByType DEFLATE application/rss+xml
+    AddOutputFilterByType DEFLATE application/javascript
+    AddOutputFilterByType DEFLATE application/x-javascript
+</IfModule>
+
+# Error pages
+ErrorDocument 404 /admin/404.php
+ErrorDocument 403 /admin/403.php
+ErrorDocument 500 /admin/500.php
+
+# Prevent access to version control files
+<FilesMatch "\.(git|svn)">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Prevent access to backup files
+<FilesMatch "\.(bak|backup|old|tmp)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Limit file upload size (if mod_php is available)
+<IfModule mod_php.c>
+    php_value upload_max_filesize 10M
+    php_value post_max_size 10M
+    php_value max_execution_time 30
+    php_value max_input_time 30
+    php_value memory_limit 128M
+</IfModule>
+
+# Disable server signature
+ServerSignature Off
+
+# Hide PHP version
+<IfModule mod_headers.c>
+    Header unset X-Powered-By
+</IfModule>
+
+# Prevent access to .env files
+<FilesMatch "\.env">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Prevent access to composer files
+<FilesMatch "^(composer\.(json|lock)|package\.(json|lock))$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Prevent access to README files
+<FilesMatch "README\.(md|txt)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
