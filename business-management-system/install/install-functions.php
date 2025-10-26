@@ -296,9 +296,6 @@ function installDatabaseSchema($pdo, $prefix = 'bms_') {
  */
 function verifyDatabaseTables($pdo, $prefix = 'bms_') {
     try {
-        // Force a fresh connection to ensure we see the latest tables
-        $pdo->exec("FLUSH TABLES");
-        
         $requiredTables = [
             $prefix . 'users',
             $prefix . 'roles', 
