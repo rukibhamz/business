@@ -354,9 +354,28 @@ function verifyDatabaseTables($pdo, $prefix = 'bms_') {
  * Create configuration file
  */
 function createConfigFile($config) {
+    // Auto-detect the base URL and paths
+    $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
+    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    $scriptName = $_SERVER['SCRIPT_NAME'] ?? '';
+    $basePath = dirname(dirname($scriptName));
+    $baseUrl = $protocol . '://' . $host . $basePath;
+    
     $configContent = "<?php\n";
     $configContent .= "// Business Management System Configuration\n";
     $configContent .= "// Generated during installation on " . date('Y-m-d H:i:s') . "\n\n";
+    
+    $configContent .= "// Path Configuration\n";
+    $configContent .= "define('BASE_PATH', dirname(__DIR__));\n";
+    $configContent .= "define('BASE_URL', '{$baseUrl}');\n";
+    $configContent .= "define('ADMIN_PATH', BASE_PATH . '/admin');\n";
+    $configContent .= "define('ADMIN_URL', BASE_URL . '/admin');\n";
+    $configContent .= "define('PUBLIC_PATH', BASE_PATH . '/public');\n";
+    $configContent .= "define('PUBLIC_URL', BASE_URL . '/public');\n";
+    $configContent .= "define('UPLOADS_PATH', BASE_PATH . '/uploads');\n";
+    $configContent .= "define('UPLOADS_URL', BASE_URL . '/uploads');\n";
+    $configContent .= "define('CACHE_PATH', BASE_PATH . '/cache');\n";
+    $configContent .= "define('LOGS_PATH', BASE_PATH . '/logs');\n\n";
     
     $configContent .= "// Database Configuration\n";
     $configContent .= "define('DB_HOST', '{$config['db_host']}');\n";
@@ -376,7 +395,7 @@ function createConfigFile($config) {
     
     $configContent .= "// System Configuration\n";
     $configContent .= "define('INSTALLED', true);\n";
-    $configContent .= "define('VERSION', '1.0.0');\n";
+    $configContent .= "define('VERSION', '4.0.0');\n";
     $configContent .= "define('ENVIRONMENT', 'production');\n\n";
     
     $configContent .= "// Security Configuration\n";

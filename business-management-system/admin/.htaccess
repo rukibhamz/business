@@ -1,0 +1,29 @@
+# Business Management System - Admin Panel
+# Security and URL rewriting
+
+# Prevent direct access to PHP files in includes directory
+<Files "*.php">
+    Order Deny,Allow
+    Deny from all
+</Files>
+
+# Allow access to specific files
+<Files "header.php">
+    Order Allow,Deny
+    Allow from all
+</Files>
+
+<Files "footer.php">
+    Order Allow,Deny
+    Allow from all
+</Files>
+
+# Enable URL rewriting
+RewriteEngine On
+
+# Redirect to login if not authenticated (except for login.php and logout.php)
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_URI} !^/admin/login\.php$
+RewriteCond %{REQUEST_URI} !^/admin/logout\.php$
+RewriteRule ^(.*)$ login.php [R=302,L]

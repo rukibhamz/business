@@ -1,58 +1,64 @@
 <?php
 /**
  * Business Management System - Admin Login
- * Phase 1: Core Foundation
  */
 
-// Define system constant
-define('BMS_SYSTEM', true);
+// Include configuration
+require_once '../config/config.php';
+
+// Check if system is installed
+if (!defined('INSTALLED') || !INSTALLED) {
+    header('Location: ../install/');
+    exit;
+}
 
 // Start session
 session_start();
 
-// Include required files
-require_once '../config/config.php';
-require_once '../config/constants.php';
-require_once '../config/database.php';
-require_once '../includes/functions.php';
-require_once '../includes/auth.php';
-
-// Check if already logged in
-if (isLoggedIn()) {
-    redirect(BMS_ADMIN_URL . '/');
-}
-
-// Handle login form submission
-$error = '';
-$success = '';
-
+// Handle login
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $username = sanitizeInput($_POST['username'] ?? '');
+    $username = $_POST['username'] ?? '';
     $password = $_POST['password'] ?? '';
-    $rememberMe = isset($_POST['remember_me']);
     
-    if (empty($username) || empty($password)) {
-        $error = 'Username and password are required';
-    } else {
-        $result = $auth->login($username, $password, $rememberMe);
-        
-        if ($result['success']) {
-            redirect(BMS_ADMIN_URL . '/');
-        } else {
-            $error = $result['message'];
+    if (!empty($username) && !empty($password)) {
+        try {
+            $dsn = "mysql:host=" . DB_HOST . ";port=" . DB_PORT . ";dbname=" . DB_NAME . ";charset=utf8mb4";
+            $pdo = new PDO($dsn, DB_USER, DB_PASS, [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+            ]);
+            
+            $stmt = $pdo->prepare("SELECT * FROM " . DB_PREFIX . "users WHERE username = ? AND status = 'active'");
+            $stmt->execute([$username]);
+            $user = $stmt->fetch();
+            
+            if ($user && password_verify($password, $user['password'])) {
+                $_SESSION['admin_logged_in'] = true;
+                $_SESSION['admin_user_id'] = $user['id'];
+                $_SESSION['admin_username'] = $user['username'];
+                $_SESSION['admin_role_id'] = $user['role_id'];
+                
+                // Update last login
+                $stmt = $pdo->prepare("UPDATE " . DB_PREFIX . "users SET last_login = NOW() WHERE id = ?");
+                $stmt->execute([$user['id']]);
+                
+                header('Location: index.php');
+                exit;
+            } else {
+                $error = 'Invalid username or password';
+            }
+        } catch (PDOException $e) {
+            $error = 'Database error: ' . $e->getMessage();
         }
+    } else {
+        $error = 'Please enter both username and password';
     }
 }
 
-// Get messages from URL parameters
-if (isset($_GET['timeout'])) {
-    $error = 'Your session has expired. Please log in again.';
-} elseif (isset($_GET['security'])) {
-    $error = 'Security check failed. Please log in again.';
-} elseif (isset($_GET['logout'])) {
-    $success = 'You have been logged out successfully.';
-} elseif (isset($_GET['password_changed'])) {
-    $success = 'Your password has been changed successfully.';
+// Check if already logged in
+if (isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'] === true) {
+    header('Location: index.php');
+    exit;
 }
 ?>
 <!DOCTYPE html>
@@ -61,144 +67,121 @@ if (isset($_GET['timeout'])) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - <?php echo COMPANY_NAME; ?></title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="../public/css/admin.css">
-    <link rel="icon" type="image/x-icon" href="../public/images/logo.png">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+        body {
+            font-family: 'Poppins', sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #fafafa;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .login-container {
+            background: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 400px;
+        }
+        .login-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .login-header h1 {
+            margin: 0 0 10px 0;
+            color: #2c3e50;
+        }
+        .login-header p {
+            margin: 0;
+            color: #7f8c8d;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #2c3e50;
+            font-weight: 500;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        .form-group input:focus {
+            outline: none;
+            border-color: #2c3e50;
+        }
+        .btn {
+            width: 100%;
+            padding: 12px;
+            background: #2c3e50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .btn:hover {
+            background: #34495e;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .back-link {
+            text-align: center;
+            margin-top: 20px;
+        }
+        .back-link a {
+            color: #2c3e50;
+            text-decoration: none;
+        }
+        .back-link a:hover {
+            text-decoration: underline;
+        }
+    </style>
 </head>
-<body class="login-page">
+<body>
     <div class="login-container">
-        <div class="login-box">
-            <div class="login-header">
-                <div class="logo">
-                    <h1><?php echo COMPANY_NAME; ?></h1>
-                    <p>Business Management System</p>
-                </div>
-            </div>
-
-            <div class="login-content">
-                <?php if ($error): ?>
-                <div class="alert alert-error">
-                    <i class="icon-warning"></i>
-                    <?php echo $error; ?>
-                </div>
-                <?php endif; ?>
-
-                <?php if ($success): ?>
-                <div class="alert alert-success">
-                    <i class="icon-check"></i>
-                    <?php echo $success; ?>
-                </div>
-                <?php endif; ?>
-
-                <form method="POST" action="" class="login-form">
-                    <div class="form-group">
-                        <label for="username">Username or Email</label>
-                        <input type="text" 
-                               id="username" 
-                               name="username" 
-                               value="<?php echo htmlspecialchars($username ?? ''); ?>" 
-                               placeholder="Enter your username or email" 
-                               required 
-                               autofocus>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="password">Password</label>
-                        <div class="password-input">
-                            <input type="password" 
-                                   id="password" 
-                                   name="password" 
-                                   placeholder="Enter your password" 
-                                   required>
-                            <button type="button" class="toggle-password" onclick="togglePassword('password')">
-                                <i class="icon-eye"></i>
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label class="checkbox-label">
-                            <input type="checkbox" name="remember_me" value="1">
-                            <span class="checkmark"></span>
-                            Remember me for 30 days
-                        </label>
-                    </div>
-
-                    <button type="submit" class="btn btn-primary btn-block">
-                        <i class="icon-login"></i>
-                        Sign In
-                    </button>
-                </form>
-            </div>
-
-            <div class="login-footer">
-                <p>&copy; <?php echo date('Y'); ?> <?php echo COMPANY_NAME; ?>. All rights reserved.</p>
-                <p>Version <?php echo BMS_VERSION; ?> - <?php echo BMS_PHASE; ?></p>
-            </div>
+        <div class="login-header">
+            <h1><?php echo COMPANY_NAME; ?></h1>
+            <p>Admin Login</p>
         </div>
-
-        <div class="login-info">
-            <div class="info-content">
-                <h2>Welcome to Business Management System</h2>
-                <p>Your comprehensive business management solution with modules for accounting, events, properties, inventory, and more.</p>
-                
-                <div class="features">
-                    <div class="feature">
-                        <i class="icon-dashboard"></i>
-                        <h3>Dashboard</h3>
-                        <p>Real-time overview of your business metrics</p>
-                    </div>
-                    <div class="feature">
-                        <i class="icon-users"></i>
-                        <h3>User Management</h3>
-                        <p>Manage users, roles, and permissions</p>
-                    </div>
-                    <div class="feature">
-                        <i class="icon-settings"></i>
-                        <h3>Settings</h3>
-                        <p>Configure system settings and preferences</p>
-                    </div>
-                </div>
+        
+        <?php if (isset($error)): ?>
+        <div class="error"><?php echo htmlspecialchars($error); ?></div>
+        <?php endif; ?>
+        
+        <form method="POST">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" required>
             </div>
+            
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" required>
+            </div>
+            
+            <button type="submit" class="btn">Login</button>
+        </form>
+        
+        <div class="back-link">
+            <a href="../">← Back to Site</a>
         </div>
     </div>
-
-    <script>
-        function togglePassword(fieldId) {
-            const field = document.getElementById(fieldId);
-            const button = field.nextElementSibling;
-            const icon = button.querySelector('i');
-            
-            if (field.type === 'password') {
-                field.type = 'text';
-                icon.className = 'icon-eye-off';
-            } else {
-                field.type = 'password';
-                icon.className = 'icon-eye';
-            }
-        }
-
-        // Auto-focus username field
-        document.addEventListener('DOMContentLoaded', function() {
-            const usernameField = document.getElementById('username');
-            if (usernameField && !usernameField.value) {
-                usernameField.focus();
-            }
-        });
-
-        // Form validation
-        document.querySelector('.login-form').addEventListener('submit', function(e) {
-            const username = document.getElementById('username').value.trim();
-            const password = document.getElementById('password').value;
-            
-            if (!username || !password) {
-                e.preventDefault();
-                alert('Please enter both username and password.');
-                return false;
-            }
-        });
-    </script>
 </body>
 </html>
