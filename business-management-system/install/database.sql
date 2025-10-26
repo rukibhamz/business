@@ -515,15 +515,15 @@ CREATE TABLE IF NOT EXISTS `bms_hall_settings` (
 -- INSERT DEFAULT DATA
 -- ==============================================
 
--- Insert default roles
-INSERT INTO `bms_roles` (`name`, `description`, `is_system`) VALUES
+-- Insert default roles (ignore duplicates)
+INSERT IGNORE INTO `bms_roles` (`name`, `description`, `is_system`) VALUES
 ('Super Admin', 'Full system access with all permissions', 1),
 ('Admin', 'Administrative access with most permissions', 1),
 ('Manager', 'Management access with limited permissions', 0),
 ('User', 'Basic user access with minimal permissions', 0);
 
--- Insert default permissions (Phase 1-4)
-INSERT INTO `bms_permissions` (`name`, `display_name`, `module`, `description`) VALUES
+-- Insert default permissions (Phase 1-4) (ignore duplicates)
+INSERT IGNORE INTO `bms_permissions` (`name`, `display_name`, `module`, `description`) VALUES
 -- Core permissions
 ('dashboard.view', 'View Dashboard', 'dashboard', 'Access to the main dashboard'),
 ('users.view', 'View Users', 'users', 'View user list and details'),
@@ -570,16 +570,16 @@ INSERT INTO `bms_permissions` (`name`, `display_name`, `module`, `description`) 
 ('halls.categories.edit', 'Edit Categories', 'halls', 'Edit hall categories'),
 ('halls.reports.view', 'View Hall Reports', 'halls', 'View hall reports');
 
--- Insert default role permissions (Super Admin gets all permissions)
-INSERT INTO `bms_role_permissions` (`role_id`, `permission_id`) 
+-- Insert default role permissions (Super Admin gets all permissions) (ignore duplicates)
+INSERT IGNORE INTO `bms_role_permissions` (`role_id`, `permission_id`) 
 SELECT 1, id FROM `bms_permissions`;
 
--- Insert default role permissions (Admin gets most permissions except user deletion)
-INSERT INTO `bms_role_permissions` (`role_id`, `permission_id`) 
+-- Insert default role permissions (Admin gets most permissions except user deletion) (ignore duplicates)
+INSERT IGNORE INTO `bms_role_permissions` (`role_id`, `permission_id`) 
 SELECT 2, id FROM `bms_permissions` WHERE name != 'users.delete';
 
--- Insert default settings
-INSERT INTO `bms_settings` (`setting_key`, `setting_value`, `setting_type`, `description`) VALUES
+-- Insert default settings (ignore duplicates)
+INSERT IGNORE INTO `bms_settings` (`setting_key`, `setting_value`, `setting_type`, `description`) VALUES
 ('company_name', 'Business Management System', 'text', 'Company name'),
 ('company_email', 'admin@example.com', 'text', 'Company email address'),
 ('company_phone', '+234 000 000 0000', 'text', 'Company phone number'),
@@ -591,8 +591,8 @@ INSERT INTO `bms_settings` (`setting_key`, `setting_value`, `setting_type`, `des
 ('session_timeout', '3600', 'number', 'Session timeout in seconds'),
 ('maintenance_mode', '0', 'boolean', 'Maintenance mode status');
 
--- Insert default chart of accounts
-INSERT INTO `bms_accounts` (`account_code`, `account_name`, `account_type`, `account_subtype`, `description`, `opening_balance`, `current_balance`) VALUES
+-- Insert default chart of accounts (ignore duplicates)
+INSERT IGNORE INTO `bms_accounts` (`account_code`, `account_name`, `account_type`, `account_subtype`, `description`, `opening_balance`, `current_balance`) VALUES
 -- Assets
 ('1000', 'Cash', 'Asset', 'Current Asset', 'Cash on hand', 0.00, 0.00),
 ('1100', 'Bank Account', 'Asset', 'Current Asset', 'Main bank account', 0.00, 0.00),
@@ -617,14 +617,14 @@ INSERT INTO `bms_accounts` (`account_code`, `account_name`, `account_type`, `acc
 ('5300', 'Salaries Expense', 'Expense', 'Operating Expense', 'Employee salaries', 0.00, 0.00),
 ('5400', 'Marketing Expense', 'Expense', 'Operating Expense', 'Advertising and marketing', 0.00, 0.00);
 
--- Insert default tax rates
-INSERT INTO `bms_tax_rates` (`tax_name`, `tax_code`, `tax_rate`, `tax_type`) VALUES
+-- Insert default tax rates (ignore duplicates)
+INSERT IGNORE INTO `bms_tax_rates` (`tax_name`, `tax_code`, `tax_rate`, `tax_type`) VALUES
 ('VAT', 'VAT', 7.50, 'Percentage'),
 ('Withholding Tax', 'WHT', 5.00, 'Percentage'),
 ('Service Tax', 'ST', 2.50, 'Percentage');
 
--- Insert default expense categories
-INSERT INTO `bms_expense_categories` (`category_name`, `description`, `default_account_id`) VALUES
+-- Insert default expense categories (ignore duplicates)
+INSERT IGNORE INTO `bms_expense_categories` (`category_name`, `description`, `default_account_id`) VALUES
 ('Office Supplies', 'Stationery and office materials', 5),
 ('Travel & Transport', 'Business travel expenses', 5),
 ('Marketing & Advertising', 'Promotional activities', 5),
@@ -634,8 +634,8 @@ INSERT INTO `bms_expense_categories` (`category_name`, `description`, `default_a
 ('Training & Development', 'Staff training programs', 5),
 ('Insurance', 'Business insurance premiums', 5);
 
--- Insert default hall categories
-INSERT INTO `bms_hall_categories` (`category_name`, `description`, `icon`) VALUES
+-- Insert default hall categories (ignore duplicates)
+INSERT IGNORE INTO `bms_hall_categories` (`category_name`, `description`, `icon`) VALUES
 ('Conference Hall', 'Large halls for conferences and meetings', 'fas fa-users'),
 ('Meeting Room', 'Small rooms for team meetings', 'fas fa-handshake'),
 ('Event Hall', 'Spacious halls for events and parties', 'fas fa-calendar-alt'),
@@ -645,14 +645,14 @@ INSERT INTO `bms_hall_categories` (`category_name`, `description`, `icon`) VALUE
 ('Seminar Room', 'Medium-sized rooms for seminars', 'fas fa-presentation'),
 ('Workshop Space', 'Flexible spaces for workshops', 'fas fa-tools');
 
--- Insert default hall email templates
-INSERT INTO `bms_hall_email_templates` (`template_name`, `subject`, `body`) VALUES
+-- Insert default hall email templates (ignore duplicates)
+INSERT IGNORE INTO `bms_hall_email_templates` (`template_name`, `subject`, `body`) VALUES
 ('booking_confirmation', 'Booking Confirmed - {{event_name}}', 'Dear {{customer_name}},\n\nYour hall booking has been confirmed!\n\nEvent: {{event_name}}\nHall: {{hall_name}}\nDate: {{booking_date}}\nTime: {{start_time}} - {{end_time}}\nTotal Amount: {{total_amount}}\n\nThank you for choosing our services!\n\nBest regards,\n{{company_name}}'),
 ('payment_received', 'Payment Received - {{booking_number}}', 'Dear {{customer_name}},\n\nWe have received your payment for booking {{booking_number}}.\n\nPayment Amount: {{payment_amount}}\nPayment Method: {{payment_method}}\nPayment Date: {{payment_date}}\n\nThank you for your payment!\n\nBest regards,\n{{company_name}}'),
 ('booking_reminder', 'Upcoming Event Reminder - {{event_name}}', 'Dear {{customer_name}},\n\nThis is a reminder about your upcoming event:\n\nEvent: {{event_name}}\nHall: {{hall_name}}\nDate: {{booking_date}}\nTime: {{start_time}} - {{end_time}}\n\nPlease arrive 15 minutes early for check-in.\n\nBest regards,\n{{company_name}}');
 
--- Insert default hall settings
-INSERT INTO `bms_hall_settings` (`setting_key`, `setting_value`, `setting_type`, `description`) VALUES
+-- Insert default hall settings (ignore duplicates)
+INSERT IGNORE INTO `bms_hall_settings` (`setting_key`, `setting_value`, `setting_type`, `description`) VALUES
 ('booking_advance_days', '30', 'number', 'Maximum days in advance for booking'),
 ('cancellation_hours', '24', 'number', 'Hours before event for cancellation'),
 ('service_fee_percentage', '5.00', 'number', 'Service fee percentage'),
