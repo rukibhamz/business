@@ -2,12 +2,26 @@
 
 A comprehensive, modular business management solution built with PHP and MySQL. This system provides a solid foundation for managing various business operations including accounting, events, properties, inventory, utilities, and more.
 
-## 🚀 Phase 1: Core Foundation
+## 🎯 Project Status
 
-This is the first phase of the Business Management System, focusing on the installation wizard and core authentication system. Future phases will add business modules and advanced features.
+### ✅ **Phase 1: Core Foundation** - COMPLETED
+Installation wizard and core authentication system with role-based access control.
 
-### ✨ Features
+### ✅ **Phase 2: User Management & Settings** - COMPLETED  
+Complete user management with roles, permissions, and system settings.
 
+### ✅ **Phase 3: Accounting System** - COMPLETED
+Full double-entry accounting system with invoicing, payments, expenses, and financial reports.
+
+### 🚧 **Phase 4: Business Modules** - IN DEVELOPMENT
+Events, Properties, Inventory, and Utilities management modules.
+
+### 📋 **Phase 5: Advanced Features** - PLANNED
+API development, mobile support, advanced reporting, and integration capabilities.
+
+## ✨ Current Features
+
+### 🔐 **Core System (Phase 1)**
 - **Modern Installation Wizard**: Step-by-step installation process with requirements checking
 - **Secure Authentication**: Role-based access control with session management
 - **Admin Dashboard**: Clean, responsive interface with real-time statistics
@@ -16,6 +30,23 @@ This is the first phase of the Business Management System, focusing on the insta
 - **Activity Logging**: Track user actions and system events
 - **Notification System**: Built-in notification management
 - **Responsive Design**: Works on desktop, tablet, and mobile devices
+
+### 👥 **User Management (Phase 2)**
+- **Complete User Management**: Add, edit, delete users with profile management
+- **Role & Permission System**: Granular permissions with role-based access control
+- **System Settings**: Comprehensive settings management (general, email, system)
+- **Activity Logs**: Detailed activity tracking and audit trails
+- **Profile Management**: User profile editing with password change functionality
+
+### 💰 **Accounting System (Phase 3)**
+- **Double-Entry Bookkeeping**: Complete accounting system with automatic journal entries
+- **Chart of Accounts**: Hierarchical account structure with Nigerian business context
+- **Invoice Management**: Complete invoice lifecycle (Draft → Sent → Paid)
+- **Payment Processing**: Payment recording with receipt generation
+- **Expense Management**: Expense tracking with approval workflow and receipt uploads
+- **Financial Reports**: Balance Sheet, P&L, Trial Balance, General Ledger, Cash Flow
+- **Journal Entries**: Manual journal entry creation with validation
+- **Real-time Analytics**: Interactive charts and financial summaries
 
 ## 📋 System Requirements
 
@@ -123,13 +154,10 @@ business-management-system/
 ├── install/                     # Installation wizard
 │   ├── index.php               # Main installation file
 │   ├── steps/                  # Installation steps
-│   │   ├── step-1.php         # Requirements check
-│   │   ├── step-2.php         # Database setup
-│   │   ├── step-3.php         # Site configuration
-│   │   ├── step-4.php         # Admin account
-│   │   └── step-5.php         # Installation complete
 │   ├── install-functions.php  # Helper functions
-│   ├── database.sql           # Database schema
+│   ├── database.sql           # Phase 1 database schema
+│   ├── phase2-database.sql    # Phase 2 database schema
+│   ├── phase3-database.sql    # Phase 3 database schema
 │   └── assets/                # Installation assets
 ├── config/                     # Configuration files
 │   ├── config.sample.php      # Sample configuration
@@ -137,17 +165,34 @@ business-management-system/
 │   └── constants.php          # System constants
 ├── includes/                   # Core includes
 │   ├── functions.php          # Global functions
-│   └── auth.php               # Authentication system
+│   ├── auth.php               # Authentication system
+│   ├── csrf.php               # CSRF protection
+│   └── accounting-functions.php # Accounting helper functions
 ├── admin/                      # Admin panel
 │   ├── index.php              # Dashboard
 │   ├── login.php              # Login page
 │   ├── logout.php             # Logout script
+│   ├── users/                 # User management (Phase 2)
+│   ├── roles/                 # Role management (Phase 2)
+│   ├── settings/              # System settings (Phase 2)
+│   ├── activity/              # Activity logs (Phase 2)
+│   ├── accounting/            # Accounting system (Phase 3)
+│   │   ├── index.php          # Accounting dashboard
+│   │   ├── accounts/          # Chart of accounts
+│   │   ├── invoices/          # Invoice management
+│   │   ├── payments/          # Payment processing
+│   │   ├── expenses/          # Expense management
+│   │   ├── reports/           # Financial reports
+│   │   └── journal/           # Journal entries
 │   └── includes/              # Admin includes
 ├── public/                     # Public assets
 │   ├── css/                   # Stylesheets
 │   ├── js/                    # JavaScript files
 │   └── images/                # Images and icons
 ├── uploads/                    # File uploads
+│   ├── logos/                 # Company logos
+│   ├── profiles/              # User profile pictures
+│   └── expenses/              # Expense receipts
 ├── cache/                      # System cache
 ├── logs/                       # System logs
 ├── .htaccess                   # Apache configuration
@@ -213,13 +258,30 @@ The system uses a role-based permission system. Each role has specific permissio
 
 ## 📊 Database Schema
 
-### Core Tables
+### Phase 1: Core Tables
 - `bms_users` - User accounts
 - `bms_roles` - User roles
 - `bms_settings` - System settings
 - `bms_activity_logs` - Activity tracking
 - `bms_sessions` - Session management
 - `bms_notifications` - User notifications
+
+### Phase 2: User Management Tables
+- `bms_permissions` - System permissions
+- `bms_role_permissions` - Role-permission relationships
+- `bms_user_profiles` - Extended user profiles
+
+### Phase 3: Accounting Tables
+- `bms_accounts` - Chart of accounts
+- `bms_customers` - Customer management
+- `bms_invoices` - Invoice records
+- `bms_invoice_items` - Invoice line items
+- `bms_payments` - Payment records
+- `bms_expense_categories` - Expense categories
+- `bms_expenses` - Expense records
+- `bms_journal_entries` - Journal entries
+- `bms_journal_entry_lines` - Journal entry lines
+- `bms_tax_rates` - Tax rate definitions
 
 ### Security Tables
 - `bms_login_attempts` - Login attempt tracking
@@ -341,37 +403,54 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ### Professional Support
 For professional support and custom development, please contact the development team.
 
-## 🗺️ Roadmap
+## 🗺️ Development Roadmap
 
-### Phase 2: User Management & Settings
-- Advanced user management
-- Role and permission management
-- System settings interface
-- Profile management
+### ✅ Phase 1: Core Foundation (COMPLETED)
+- Installation wizard with requirements checking
+- Secure authentication system
+- Role-based access control
+- Admin dashboard with statistics
+- Database management and security features
 
-### Phase 3: Business Modules
-- Accounting module
-- Events management
-- Properties management
-- Inventory management
-- Utilities management
+### ✅ Phase 2: User Management & Settings (COMPLETED)
+- Complete user management system
+- Advanced role and permission management
+- Comprehensive system settings interface
+- User profile management
+- Activity logging and audit trails
 
-### Phase 4: Advanced Features
-- API development
-- Mobile app support
-- Advanced reporting
-- Integration capabilities
+### ✅ Phase 3: Accounting System (COMPLETED)
+- Double-entry bookkeeping system
+- Chart of accounts with Nigerian business context
+- Complete invoice management lifecycle
+- Payment processing with receipt generation
+- Expense management with approval workflow
+- Financial reports (Balance Sheet, P&L, Trial Balance, etc.)
+- Manual journal entries with validation
+- Real-time financial analytics
 
-### Phase 5: Enterprise Features
-- Multi-tenant support
-- Advanced security
-- Performance optimization
-- Scalability improvements
+### 🚧 Phase 4: Business Modules (IN DEVELOPMENT)
+- **Events Management**: Event planning, booking, and management
+- **Properties Management**: Property listings, rentals, and maintenance
+- **Inventory Management**: Stock tracking, suppliers, and procurement
+- **Utilities Management**: Utility billing and payment tracking
+
+### 📋 Phase 5: Advanced Features (PLANNED)
+- **API Development**: RESTful API for third-party integrations
+- **Mobile App Support**: Mobile-responsive design and PWA features
+- **Advanced Reporting**: Custom report builder and analytics
+- **Integration Capabilities**: Third-party service integrations
+
+### 🔮 Phase 6: Enterprise Features (FUTURE)
+- **Multi-tenant Support**: Multiple organization management
+- **Advanced Security**: Enhanced security features and compliance
+- **Performance Optimization**: Caching, optimization, and scalability
+- **Cloud Deployment**: Cloud-native deployment options
 
 ## 📞 Contact
 
 - **Project**: Business Management System
-- **Version**: 1.0.0 (Phase 1)
+- **Version**: 3.0.0 (Phase 3 Complete)
 - **Author**: Business Management System Team
 - **Website**: [Your Website]
 - **Email**: [Your Email]
@@ -379,5 +458,7 @@ For professional support and custom development, please contact the development 
 ---
 
 **Thank you for using Business Management System!** 🎉
+
+The system now includes a complete accounting module with double-entry bookkeeping, invoice management, payment processing, expense tracking, and comprehensive financial reporting. Perfect for small to medium businesses looking for a professional accounting solution.
 
 If you find this project helpful, please consider giving it a star on GitHub and sharing it with others.
